@@ -39,44 +39,42 @@ async def handle_message(message: dict) -> None:
 async def handle_start(message: dict, from_user: dict, text: str) -> None:
     """
     پردازش دستور /start
-    اگر پارامتر داشته باشد (deep link) اون رو هم ذخیره می‌کنیم
+    اگر پارامتر داشته باشد (deep link) یعنی کاربر روی لینک اختصاصی کسی کلیک کرده
     """
     user_id = from_user["id"]
     first_name = from_user.get("first_name", "")
     username = from_user.get("username", "")
 
-    # استخراج پارامتر از /start PAYLOAD
+    # استخراج پارامتر پس از /start PAYLOAD
     parts = text.strip().split(maxsplit=1)
     source_token = parts[1].strip() if len(parts) > 1 else ""
 
-    # بررسی می‌کنیم که آیا source_token یک توکن شخصی است
-    # یا یک نام لینک عادی
+    # بررسی می‌کنیم آیا source_token یک توکن لینک اختصاصی است
+    # یا اینکه یک نام لینک عمومی است
     owner_user_id = None
     if source_token:
         owner_user_id = storage.get_user_id_by_token(source_token)
 
-    # اگر توکن شخصی بود، source_link را به نام لینک عادی تبدیل می‌کنیم
-    # در غیر این صورت، source_token همان نام لینک عادی است
+    # ذخیره / بروزرسانی کاربران در دیتابیس
     source_link = source_token
-
-    # ذخیره / بروزرسانی کاربر
     user_record = storage.upsert_user(from_user, source_link=source_link)
 
-    # ثبت کلیک روی لینک (فقط برای لینک‌های عادی که در سیستم ثبت شده‌اند)
+    # ثبت کلیک روی لینک (فقط برای لینک‌های عمومی که owner ندارند)
     if source_link and owner_user_id is None:
         storage.record_link_click(source_link, user_id)
 
     # دانلود عکس پروفایل در پس‌زمینه
     asyncio.create_task(_download_and_save_photo(user_id))
 
-    # ─── ارسال پیام به بازدیدکننده ───
+    # ─── ارسال پیام به کاربر بر اساس source_token ───
     if source_token and owner_user_id is not None:
-        # کاربر از طریق لینک شخصی کسی آمده
+        # کاربر روی لینک اختصاصی یک نفر دیگر کلیک کرده
         owner = storage.load_user(owner_user_id)
+        # owner_name = first_name صاحب لینک (کسی که لینکش کلیک شده)
         owner_name = owner.get("first_name", "صاحب لینک") if owner else "صاحب لینک"
         owner_username = owner.get("username", "") if owner else ""
 
-        # بررسی پیام سفارشی برای صاحب لینک
+        # بررسی پیام ویژه سفارشی برای این کاربر
         custom = storage.get_special_message(
             owner_user_id, owner_username, "welcome_with_link",
             first_name=first_name, owner_name=owner_name, source_link=source_token
@@ -98,7 +96,6 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
             visitor_name = first_name
             visitor_username = f"@{username}" if username else "(بدون یوزرنیم)"
 
-            # بررسی پیام سفارشی برای اطلاع‌رسانی
             notify_custom = storage.get_special_message(
                 owner_user_id, owner_username, "notify_owner",
                 visitor_name=visitor_name, visitor_username=visitor_username
@@ -111,7 +108,7 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
             await bale_api.send_message(owner_user_id, notify_text)
 
     elif source_link:
-        # لینک عادی (نه توکن شخصی)
+        # لینک عمومی (name-based link) - بدون owner
         welcome_text = storage.get_bot_message(
             "welcome_with_link",
             first_name=first_name,
@@ -127,7 +124,7 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
         )
         await bale_api.send_message(user_id, welcome_text)
 
-    # ذخیره پیام /start در لیست پیام‌ها
+    # ذخیره پیام /start در لیست پیام‌های کاربر
     storage.save_message(user_id, message)
 
     logger.info(f"[BOT] /start | user={user_id} | token={source_token or '(direct)'}")
@@ -136,63 +133,68 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
 async def handle_getlink(message: dict, from_user: dict) -> None:
     """
     دستور /getlink - ساخت لینک اختصاصی برای کاربر
-    از آی‌دی پرایوت (UUID) استفاده می‌کند که قابل حدس نباشد
+    به هر کاربر یک توکن UUID منحصربه‌فرد می‌دهد و لینک ساخته می‌شود
     """
     user_id = from_user["id"]
     first_name = from_user.get("first_name", "")
 
-    # ذخیره / بروزرسانی کاربر
+    # ذخیره / بروزرسانی کاربران
     storage.upsert_user(from_user)
     asyncio.create_task(_download_and_save_photo(user_id))
 
-    # دریافت یا ساخت توکن اختصاصی
+    # دریافت یا ایجاد توکن اختصاصی
     token = storage.get_or_create_user_token(user_id, first_name)
 
-    # ساخت لینک
-    link = f"https://ble.ir/{BOT_USERNAME}?start={token}" if BOT_USERNAME else f"https://ble.ir/BOT_USERNAME?start={token}"
+    # ساخت deep link
+    if BOT_USERNAME:
+        deep_link = f"https://ble.ir/{BOT_USERNAME}?start={token}"
+    else:
+        deep_link = f"ble.ir/BOT_USERNAME?start={token}"
 
-    response_text = storage.get_bot_message(
+    # ساخت متن پاسخ
+    custom = storage.get_special_message(
+        user_id, from_user.get("username", ""), "getlink_response",
+        first_name=first_name, link=deep_link
+    )
+    response_text = custom or storage.get_bot_message(
         "getlink_response",
         first_name=first_name,
-        link=link
+        link=deep_link
     )
+
     await bale_api.send_message(user_id, response_text)
 
+    # ذخیره پیام
     storage.save_message(user_id, message)
+
     logger.info(f"[BOT] /getlink | user={user_id} | token={token}")
 
 
 async def handle_regular_message(message: dict, from_user: dict) -> None:
-    """پردازش پیام عادی (غیر از /start و /getlink)"""
+    """پردازش پیام‌های عادی"""
     user_id = from_user["id"]
-    username = from_user.get("username", "")
-    text = message.get("text", "")
 
-    existing = storage.load_user(user_id)
-    if existing is None:
-        storage.upsert_user(from_user)
-        asyncio.create_task(_download_and_save_photo(user_id))
-    else:
-        storage.upsert_user(from_user)
+    # ذخیره / بروزرسانی کاربر
+    storage.upsert_user(from_user)
 
+    # ذخیره پیام
     storage.save_message(user_id, message)
 
-    if text:
-        # بررسی پیام سفارشی برای کاربر
-        custom = storage.get_special_message(
-            user_id, username, "message_received"
-        )
-        reply = custom or storage.get_bot_message("message_received")
-        await bale_api.send_message(user_id, reply)
+    # ارسال تأییدیه دریافت
+    custom = storage.get_special_message(
+        user_id, from_user.get("username", ""), "message_received"
+    )
+    response_text = custom or storage.get_bot_message("message_received")
+    await bale_api.send_message(user_id, response_text)
 
-    logger.info(f"[BOT] message | user={user_id} | type={storage._get_message_type(message)}")
+    logger.info(f"[BOT] message | user={user_id}")
 
 
 async def _download_and_save_photo(user_id: int) -> None:
-    """دانلود عکس پروفایل و ذخیره مسیرش"""
-    photo_path = await bale_api.download_profile_photo(user_id)
-    if photo_path:
-        storage.update_user_photo(user_id, photo_path)
-        logger.info(f"[BOT] photo saved | user={user_id} | path={photo_path}")
-    else:
-        logger.info(f"[BOT] no photo | user={user_id}")
+    """دانلود و ذخیره عکس پروفایل کاربر"""
+    try:
+        photo_path = await bale_api.download_profile_photo(user_id)
+        if photo_path:
+            storage.update_user_photo(user_id, photo_path)
+    except Exception as e:
+        logger.debug(f"[BOT] Photo download failed for {user_id}: {e}")

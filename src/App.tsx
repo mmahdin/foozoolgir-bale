@@ -121,7 +121,7 @@ export default function App() {
         {/* Footer */}
         <div className="px-5 py-4 border-t border-slate-100">
           <div className="text-xs text-slate-400 text-center">
-            نسخه ۲.۰ · ساخته با ❤️
+            نسخه ۲.۰ · ساخته شده با ❤️
           </div>
         </div>
       </aside>
@@ -140,16 +140,16 @@ export default function App() {
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
-            <span className="font-bold text-slate-800 text-sm">مدیریت ربات بله</span>
+            <span className="font-semibold text-slate-800 text-sm">
+              {navItems.find((n) => n.id === page)?.label || "داشبورد"}
+            </span>
           </div>
-          <div className="w-8" />
+          <div className="w-10" />
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-4 py-6">
-            {renderPage()}
-          </div>
+        <main className="flex-1 overflow-y-auto p-5 lg:p-8">
+          {renderPage()}
         </main>
       </div>
     </div>

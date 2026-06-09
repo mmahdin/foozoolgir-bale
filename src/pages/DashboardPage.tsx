@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Users, Link2, MessageSquare, MousePointerClick,
-  Activity, Send, UserCheck
+  Activity, Send, CheckCircle
 } from "lucide-react";
 import { fetchStats, Stats } from "../api";
 
@@ -34,13 +34,6 @@ export default function DashboardPage() {
           border: "border-violet-100",
         },
         {
-          label: "لینک‌های شخصی",
-          value: stats.total_personal_links,
-          icon: <UserCheck size={22} />,
-          color: "bg-emerald-50 text-emerald-600",
-          border: "border-emerald-100",
-        },
-        {
           label: "پیام‌های دریافتی",
           value: stats.total_messages,
           icon: <MessageSquare size={22} />,
@@ -55,7 +48,7 @@ export default function DashboardPage() {
           border: "border-rose-100",
         },
         {
-          label: "پیام‌های ارسالی از پنل",
+          label: "پیام‌های ارسالی از ربات",
           value: stats.total_sent_messages,
           icon: <Send size={22} />,
           color: "bg-sky-50 text-sky-600",
@@ -80,14 +73,14 @@ export default function DashboardPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm">
-          ⚠️ {error} — بررسی کنید که سرور بکند روی پورت 8000 اجرا شده باشد.
+          ❌ {error} — بررسی کنید که سرور روی پورت ۸۰۰۰ اجرا شده باشد.
         </div>
       )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {loading
-          ? [1, 2, 3, 4, 5, 6].map((i) => (
+          ? [1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
                 className="bg-white rounded-2xl border border-slate-100 p-5 h-28 animate-pulse"
@@ -144,24 +137,32 @@ export default function DashboardPage() {
           <div className="flex items-start gap-2">
             <span className="text-blue-500 font-bold mt-0.5">1.</span>
             <span>
-              کاربر دستور <code className="bg-white px-1 py-0.5 rounded text-blue-700">/getlink</code> را به ربات می‌فرستد تا لینک اختصاصی خود را دریافت کند
+              کاربران می‌توانند دستور <code className="bg-white px-1 py-0.5 rounded text-blue-700">/getlink</code> را به ربات بفرستند تا لینک اختصاصی‌شان را دریافت کنند
             </span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-500 font-bold mt-0.5">2.</span>
-            <span>ربات یک لینک منحصربه‌فرد (با UUID) می‌سازد که قابل حدس نیست</span>
+            <span>
+              وقتی کسی روی لینک اختصاصی یک نفر کلیک کند، ربات هر دو طرف را مطلع می‌کند
+            </span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-500 font-bold mt-0.5">3.</span>
-            <span>کاربر لینک را در بایو خود قرار می‌دهد</span>
+            <span>
+              از صفحه «لینک‌ها» می‌توانید لینک‌های اختصاصی بسازید و مدیریت کنید
+            </span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-500 font-bold mt-0.5">4.</span>
-            <span>وقتی شخص دیگری کلیک کند: به بازدیدکننده پیام می‌رود و صاحب لینک هم اطلاع می‌گیرد</span>
+            <span>
+              از صفحه «پیام‌های ویژه» می‌توانید برای هر کاربر پیام سفارشی‌سازی شده تنظیم کنید
+            </span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-blue-500 font-bold mt-0.5">5.</span>
-            <span>از بخش کاربران می‌توانید به هر کاربر پیام بفرستید یا پیام‌های ارسالی را حذف کنید</span>
+            <CheckCircle size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+            <span>
+              در صفحه «کاربران» می‌توانید مکالمه کامل چت با هر کاربر را مشاهده کنید
+            </span>
           </div>
         </div>
       </div>

@@ -7,9 +7,9 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Types
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export interface BaleLink {
   name: string;
@@ -18,6 +18,8 @@ export interface BaleLink {
   click_count: number;
   visitors: number[];
   deep_link: string;
+  user_id?: number;
+  user?: BaleUser | null;
 }
 
 export interface BaleUser {
@@ -56,8 +58,6 @@ export interface Stats {
   total_links: number;
   total_messages: number;
   total_clicks: number;
-  total_personal_links: number;
-  total_personal_visitors: number;
   total_sent_messages: number;
   bot_username: string;
   bot_token_set: boolean;
@@ -71,22 +71,15 @@ export interface BotMessage {
   text: string;
 }
 
-export interface PersonalLink {
-  token: string;
-  user_id: number;
-  user: BaleUser | null;
-  deep_link: string;
-}
-
 export interface SpecialMessageEntry {
-  identifier: string;
+  user_id: number;
   user: BaleUser | null;
   messages: Record<string, string>;
 }
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Links API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export const fetchLinks = async (): Promise<BaleLink[]> => {
   const res = await api.get("/api/links");
@@ -107,28 +100,9 @@ export const fetchLinkVisitors = async (name: string) => {
   return res.data;
 };
 
-export const fetchLinkUsers = async (name: string) => {
-  const res = await api.get(`/api/links/${name}/users`);
-  return res.data;
-};
-
-// ─────────────────────────────────────────────
-// Personal Links API
-// ─────────────────────────────────────────────
-
-export const fetchPersonalLinks = async (): Promise<PersonalLink[]> => {
-  const res = await api.get("/api/personal-links");
-  return res.data.personal_links;
-};
-
-export const fetchPersonalLinkVisitors = async (token: string) => {
-  const res = await api.get(`/api/personal-links/${token}/visitors`);
-  return res.data;
-};
-
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Users API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export const fetchUsers = async (): Promise<BaleUser[]> => {
   const res = await api.get("/api/users");
@@ -159,11 +133,12 @@ export const deleteSentMessage = async (entryId: string): Promise<void> => {
   await api.delete(`/api/sent-messages/${entryId}`);
 };
 
-export const getUserPhotoUrl = (userId: number) => `${BASE_URL}/api/users/${userId}/photo`;
+export const getUserPhotoUrl = (userId: number) =>
+  `${BASE_URL}/api/users/${userId}/photo`;
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Stats API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export const fetchStats = async (): Promise<Stats> => {
   const res = await api.get("/api/stats");
@@ -175,53 +150,64 @@ export const fetchBotInfo = async () => {
   return res.data;
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Bot Messages API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export const fetchBotMessages = async (): Promise<BotMessage[]> => {
   const res = await api.get("/api/bot-messages");
   return res.data.messages;
 };
 
-export const updateBotMessage = async (key: string, text: string): Promise<void> => {
-  await api.put(`/api/bot-messages/${key}`, { text });
+export const updateBotMessage = async (key: string, text: string): Promise<BotMessage> => {
+  const res = await api.put(`/api/bot-messages/${key}`, { text });
+  return res.data;
 };
 
 export const resetBotMessage = async (key: string): Promise<BotMessage> => {
-  const res = await api.post(`/api/bot-messages/${key}/reset`);
-  return res.data.message;
+  const res = await api.delete(`/api/bot-messages/${key}`);
+  return res.data;
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // Special Messages API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 
 export const fetchSpecialMessages = async (): Promise<SpecialMessageEntry[]> => {
   const res = await api.get("/api/special-messages");
-  return res.data.special_messages;
+  return res.data.entries;
 };
 
 export const setSpecialMessage = async (
-  identifier: string,
+  userId: number,
   key: string,
   text: string
 ): Promise<void> => {
-  await api.post("/api/special-messages", { identifier, key, text });
+  await api.post("/api/special-messages", { user_id: userId, key, text });
 };
 
-export const deleteSpecialMessage = async (
-  identifier: string,
-  key: string
-): Promise<void> => {
-  await api.delete(`/api/special-messages/${identifier}/${key}`);
+export const deleteSpecialMessage = async (userId: number, key: string): Promise<void> => {
+  await api.delete(`/api/special-messages/${userId}/${key}`);
 };
 
-// ─────────────────────────────────────────────
-// Messages API
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// Settings API
+// ─────────────────────────────────────────────────────────
 
-export const fetchAllMessages = async () => {
-  const res = await api.get("/api/messages");
+export const fetchSettings = async () => {
+  const res = await api.get("/api/settings");
+  return res.data;
+};
+
+export const updateSettings = async (data: Record<string, string>): Promise<void> => {
+  await api.post("/api/settings", data);
+};
+
+export const setWebhook = async (webhookUrl: string): Promise<void> => {
+  await api.post("/api/bot/webhook", { webhook_url: webhookUrl });
+};
+
+export const getUserLink = async (userId: number): Promise<{ token: string; deep_link: string }> => {
+  const res = await api.get(`/api/users/${userId}/link`);
   return res.data;
 };

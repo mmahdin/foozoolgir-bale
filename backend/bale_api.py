@@ -1,123 +1,147 @@
 """
 ماژول ارتباط با API بله
 """
-import httpx
+import logging
 import os
-import asyncio
-from typing import Optional
+import httpx
+from config import BOT_TOKEN, PROFILE_PHOTOS_DIR
 
-from config import BALE_API_URL, BALE_FILE_URL, PROFILE_PHOTOS_DIR
+logger = logging.getLogger(__name__)
 
-
-async def api_call(method: str, data: dict = None, files: dict = None) -> dict:
-    """ارسال درخواست به API بله"""
-    url = f"{BALE_API_URL}/{method}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        if files:
-            response = await client.post(url, data=data or {}, files=files)
-        elif data:
-            response = await client.post(url, json=data)
-        else:
-            response = await client.get(url)
-    return response.json()
+BASE_URL = "https://tapi.bale.ai/bot{token}"
 
 
-async def get_me() -> dict:
-    """دریافت اطلاعات ربات"""
-    return await api_call("getMe")
+def _url(method: str) -> str:
+    return f"{BASE_URL.format(token=BOT_TOKEN)}/{method}"
 
 
-async def send_message(chat_id: int, text: str, reply_markup: dict = None) -> dict:
-    """ارسال پیام متنی"""
-    data = {"chat_id": chat_id, "text": text}
-    if reply_markup:
-        data["reply_markup"] = reply_markup
-    return await api_call("sendMessage", data)
+async def send_message(chat_id: int, text: str, parse_mode: str = "Markdown") -> dict:
+    """ارسال پیام به کاربر"""
+    if not BOT_TOKEN:
+        logger.warning("[API] BOT_TOKEN not set, skipping send_message")
+        return {}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            _url("sendMessage"),
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+            }
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            logger.error(f"[API] sendMessage failed: {data}")
+        return data.get("result", {})
 
 
 async def delete_message(chat_id: int, message_id: int) -> dict:
     """حذف پیام"""
-    return await api_call("deleteMessage", {
-        "chat_id": chat_id,
-        "message_id": message_id
-    })
+    if not BOT_TOKEN:
+        return {}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            _url("deleteMessage"),
+            json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+            }
+        )
+        return resp.json()
 
 
-async def get_user_profile_photos(user_id: int, limit: int = 1) -> dict:
-    """دریافت عکس‌های پروفایل کاربر"""
-    return await api_call("getUserProfilePhotos", {"user_id": user_id, "limit": limit})
+async def get_me() -> dict:
+    """دریافت اطلاعات ربات"""
+    if not BOT_TOKEN:
+        return {}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(_url("getMe"))
+        return resp.json()
 
 
-async def get_file(file_id: str) -> dict:
-    """دریافت اطلاعات فایل"""
-    return await api_call("getFile", {"file_id": file_id})
+async def set_webhook(url: str) -> dict:
+    """تنظیم webhook"""
+    if not BOT_TOKEN:
+        return {}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            _url("setWebhook"),
+            json={"url": url}
+        )
+        return resp.json()
 
 
-async def download_profile_photo(user_id: int) -> Optional[str]:
-    """
-    دانلود و ذخیره عکس پروفایل کاربر
-    برمی‌گرداند: مسیر فایل ذخیره‌شده یا None
-    """
+async def get_updates(offset: int = 0, timeout: int = 30) -> list:
+    """دریافت آپدیت‌ها (polling)"""
+    if not BOT_TOKEN:
+        return []
+
+    async with httpx.AsyncClient(timeout=timeout + 5) as client:
+        resp = await client.get(
+            _url("getUpdates"),
+            params={"offset": offset, "timeout": timeout}
+        )
+        data = resp.json()
+        if data.get("ok"):
+            return data.get("result", [])
+        return []
+
+
+async def download_profile_photo(user_id: int) -> str:
+    """دانلود عکس پروفایل کاربر"""
+    if not BOT_TOKEN:
+        return ""
+
     try:
-        photos_resp = await get_user_profile_photos(user_id, limit=1)
+        async with httpx.AsyncClient(timeout=15) as client:
+            # دریافت اطلاعات عکس پروفایل
+            resp = await client.get(
+                _url("getUserProfilePhotos"),
+                params={"user_id": user_id, "limit": 1}
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                return ""
 
-        if not photos_resp.get("ok"):
-            return None
+            photos = data.get("result", {}).get("photos", [])
+            if not photos:
+                return ""
 
-        photos = photos_resp.get("result", {})
-        total = photos.get("total_count", 0)
+            # دریافت بزرگترین سایز
+            photo = photos[0][-1]
+            file_id = photo.get("file_id", "")
+            if not file_id:
+                return ""
 
-        if total == 0:
-            return None
+            # دریافت مسیر فایل
+            file_resp = await client.get(
+                _url("getFile"),
+                params={"file_id": file_id}
+            )
+            file_data = file_resp.json()
+            if not file_data.get("ok"):
+                return ""
 
-        photo_sizes = photos.get("photos", [[]])[0]
-        if not photo_sizes:
-            return None
+            file_path = file_data.get("result", {}).get("file_path", "")
+            if not file_path:
+                return ""
 
-        largest = photo_sizes[-1]
-        file_id = largest["file_id"]
+            # دانلود فایل
+            file_url = f"https://tapi.bale.ai/file/bot{BOT_TOKEN}/{file_path}"
+            dl_resp = await client.get(file_url)
 
-        file_resp = await get_file(file_id)
-        if not file_resp.get("ok"):
-            return None
-
-        file_path = file_resp["result"].get("file_path")
-        if not file_path:
-            return None
-
-        download_url = f"{BALE_FILE_URL}/{file_path}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(download_url)
-            if resp.status_code != 200:
-                return None
-
-            ext = os.path.splitext(file_path)[-1] or ".jpg"
-            save_path = os.path.join(PROFILE_PHOTOS_DIR, f"{user_id}{ext}")
-
+            # ذخیره
+            os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
+            save_path = os.path.join(PROFILE_PHOTOS_DIR, f"{user_id}.jpg")
             with open(save_path, "wb") as f:
-                f.write(resp.content)
+                f.write(dl_resp.content)
 
             return save_path
 
     except Exception as e:
-        print(f"[ERROR] download_profile_photo({user_id}): {e}")
-        return None
-
-
-async def set_webhook(webhook_url: str) -> dict:
-    """تنظیم webhook"""
-    return await api_call("setWebhook", {"url": webhook_url})
-
-
-async def delete_webhook() -> dict:
-    """حذف webhook"""
-    return await api_call("deleteWebhook")
-
-
-async def get_updates(offset: int = 0, timeout: int = 30) -> dict:
-    """دریافت آپدیت‌ها با long polling"""
-    return await api_call("getUpdates", {
-        "offset": offset,
-        "timeout": timeout,
-        "limit": 100
-    })
+        logger.debug(f"[API] Photo download error for {user_id}: {e}")
+        return ""

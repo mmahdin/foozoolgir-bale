@@ -53,7 +53,4 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-backend/data/messages/*.json
-backend/data/profile_photos/*.json
-backend/data/users/*.json
-backend/data/links.json
+backend/data/

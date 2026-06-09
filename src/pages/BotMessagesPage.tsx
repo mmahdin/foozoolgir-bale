@@ -19,7 +19,7 @@ export default function BotMessagesPage() {
       data.forEach((m) => (initial[m.key] = m.text));
       setDrafts(initial);
     } catch {
-      toast.error("خطا در بارگذاری متون ربات");
+      toast.error("خطا در دریافت متون ربات");
     } finally {
       setLoading(false);
     }
@@ -48,7 +48,7 @@ export default function BotMessagesPage() {
   };
 
   const handleReset = async (key: string) => {
-    if (!confirm("متن به پیش‌فرض اولیه برمی‌گردد. مطمئنید؟")) return;
+    if (!confirm("متن به حالت پیش‌فرض برمی‌گردد. مطمئنید؟")) return;
     setResetting((r) => ({ ...r, [key]: true }));
     try {
       const updated = await resetBotMessage(key);
@@ -95,9 +95,7 @@ export default function BotMessagesPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
         <Info size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-amber-700">
-          <strong>راهنما:</strong> در متن پیام‌ها می‌توانید از متغیرها استفاده کنید.
-          مثلاً <code className="bg-amber-100 px-1 rounded">{"{first_name}"}</code> با نام کاربر جایگزین می‌شود.
-          متغیرهای مجاز هر پیام در زیر آن نوشته شده‌اند.
+          <strong>راهنما:</strong> در متن پیام‌های این صفحه می‌توانید از متغیرهایی مثل <code className="bg-amber-100 px-1 rounded">{"{first_name}"}</code> استفاده کنید که ربات آن‌ها را با اطلاعات واقعی جایگزین می‌کند.
         </div>
       </div>
 
@@ -110,7 +108,10 @@ export default function BotMessagesPage() {
       ) : (
         <div className="space-y-4">
           {messages.map((msg) => (
-            <div key={msg.key} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+            <div
+              key={msg.key}
+              className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4"
+            >
               {/* Title & Description */}
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -126,7 +127,10 @@ export default function BotMessagesPage() {
                   {msg.variables.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {msg.variables.map((v) => (
-                        <code key={v} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">
+                        <code
+                          key={v}
+                          className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg"
+                        >
                           {`{${v}}`}
                         </code>
                       ))}
@@ -137,18 +141,27 @@ export default function BotMessagesPage() {
                   <button
                     onClick={() => handleReset(msg.key)}
                     disabled={resetting[msg.key]}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-xs"
+                    title="بازگشت به پیش‌فرض"
                   >
-                    <RotateCcw size={12} className={resetting[msg.key] ? "animate-spin" : ""} />
+                    {resetting[msg.key] ? (
+                      <RefreshCw size={13} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={13} />
+                    )}
                     پیش‌فرض
                   </button>
                   <button
                     onClick={() => handleSave(msg.key)}
                     disabled={saving[msg.key] || !isDirty(msg.key)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition text-xs disabled:opacity-50"
                   >
-                    <Save size={12} />
-                    {saving[msg.key] ? "ذخیره..." : "ذخیره"}
+                    {saving[msg.key] ? (
+                      <RefreshCw size={13} className="animate-spin" />
+                    ) : (
+                      <Save size={13} />
+                    )}
+                    ذخیره
                   </button>
                 </div>
               </div>
@@ -160,17 +173,8 @@ export default function BotMessagesPage() {
                   setDrafts((d) => ({ ...d, [msg.key]: e.target.value }))
                 }
                 rows={4}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono leading-relaxed"
-                dir="rtl"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-sans leading-relaxed"
               />
-
-              {/* Preview */}
-              {drafts[msg.key] && (
-                <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-3 border border-slate-100">
-                  <div className="text-xs text-slate-400 mb-1">پیش‌نمایش:</div>
-                  <div className="text-slate-700 text-sm whitespace-pre-wrap">{drafts[msg.key]}</div>
-                </div>
-              )}
             </div>
           ))}
         </div>

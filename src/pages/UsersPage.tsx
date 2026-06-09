@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Search, MessageSquare, User, Send, Trash2, X, RefreshCw, ChevronDown, ChevronUp
+  Search, User, Send, Trash2, X, RefreshCw, MessageCircle
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -9,19 +9,22 @@ import {
   getUserPhotoUrl, BaleUser, BaleMessage, SentMessage
 } from "../api";
 
+// ─── ChatItem type ────────────────────────────────────────
+type ChatItem =
+  | { kind: "received"; msg: BaleMessage }
+  | { kind: "sent"; msg: SentMessage };
+
 export default function UsersPage() {
   const [users, setUsers] = useState<BaleUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<BaleUser | null>(null);
-  const [userMessages, setUserMessages] = useState<BaleMessage[]>([]);
-  const [sentMessages, setSentMessages] = useState<SentMessage[]>([]);
+  const [chatItems, setChatItems] = useState<ChatItem[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendText, setSendText] = useState("");
   const [sending, setSending] = useState(false);
-  const [showSent, setShowSent] = useState(true);
-  const [showReceived, setShowReceived] = useState(true);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -38,6 +41,13 @@ export default function UsersPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Scroll to bottom of chat
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatItems]);
+
   const openUser = async (user: BaleUser) => {
     setSelectedUser(user);
     setSendText("");
@@ -47,11 +57,32 @@ export default function UsersPage() {
         fetchUserMessages(user.id),
         fetchUserSentMessages(user.id),
       ]);
-      setUserMessages(msgData.messages);
-      setSentMessages(sentData);
+
+      const received: ChatItem[] = (msgData.messages || []).map((msg: BaleMessage) => ({
+        kind: "received",
+        msg,
+      }));
+      const sent: ChatItem[] = (sentData || []).map((msg: SentMessage) => ({
+        kind: "sent",
+        msg,
+      }));
+
+      // Merge and sort by date
+      const all: ChatItem[] = [...received, ...sent].sort((a, b) => {
+        const dateA =
+          a.kind === "received"
+            ? new Date(a.msg.date).getTime()
+            : new Date((a.msg as SentMessage).sent_at).getTime();
+        const dateB =
+          b.kind === "received"
+            ? new Date(b.msg.date).getTime()
+            : new Date((b.msg as SentMessage).sent_at).getTime();
+        return dateA - dateB;
+      });
+
+      setChatItems(all);
     } catch {
-      setUserMessages([]);
-      setSentMessages([]);
+      setChatItems([]);
     } finally {
       setLoadingMessages(false);
     }
@@ -62,7 +93,8 @@ export default function UsersPage() {
     setSending(true);
     try {
       const sent = await sendMessageToUser(selectedUser.id, sendText.trim());
-      setSentMessages((prev) => [sent, ...prev]);
+      const newItem: ChatItem = { kind: "sent", msg: sent };
+      setChatItems((prev) => [...prev, newItem]);
       setSendText("");
       toast.success("پیام ارسال شد ✅");
     } catch (err: any) {
@@ -73,11 +105,15 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (entryId: string) => {
-    if (!confirm("پیام از چت کاربر هم حذف می‌شود. مطمئنید؟")) return;
+    if (!confirm("پیام از طرف ربات حذف می‌شود. مطمئنید؟")) return;
     try {
       await deleteSentMessage(entryId);
-      setSentMessages((prev) =>
-        prev.map((m) => m.id === entryId ? { ...m, deleted: true } : m)
+      setChatItems((prev) =>
+        prev.map((item) =>
+          item.kind === "sent" && item.msg.id === entryId
+            ? { ...item, msg: { ...item.msg, deleted: true } }
+            : item
+        )
       );
       toast.success("پیام حذف شد");
     } catch (err: any) {
@@ -102,6 +138,14 @@ export default function UsersPage() {
         hour: "2-digit", minute: "2-digit",
       });
     } catch { return iso; }
+  };
+
+  const formatTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString("fa-IR", {
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return ""; }
   };
 
   const displayName = (user: BaleUser) =>
@@ -138,209 +182,21 @@ export default function UsersPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm">
-          ⚠️ {error}
+          ❌ {error}
         </div>
       )}
 
-      {/* User Detail Modal */}
-      {selectedUser && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedUser(null)}
-        >
-          <div
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center gap-4 p-6 border-b border-slate-100">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white font-bold text-xl overflow-hidden flex-shrink-0">
-                <img
-                  src={getUserPhotoUrl(selectedUser.id)}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  className="w-full h-full object-cover"
-                  alt=""
-                />
-                {displayName(selectedUser)[0]}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-slate-800 text-lg">
-                  {displayName(selectedUser)}
-                </div>
-                {selectedUser.username && (
-                  <div className="text-blue-500 text-sm">@{selectedUser.username}</div>
-                )}
-                <div className="text-slate-400 text-xs font-mono">ID: {selectedUser.id}</div>
-              </div>
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="p-2 hover:bg-slate-100 rounded-xl transition"
-              >
-                <X size={18} className="text-slate-500" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
-              {/* User Info */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-slate-50 rounded-xl p-3">
-                  <div className="text-slate-400 text-xs mb-1">اولین مشاهده</div>
-                  <div className="font-medium text-slate-700">{formatDate(selectedUser.first_seen)}</div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-3">
-                  <div className="text-slate-400 text-xs mb-1">آخرین فعالیت</div>
-                  <div className="font-medium text-slate-700">{formatDate(selectedUser.last_seen)}</div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-3 col-span-2">
-                  <div className="text-slate-400 text-xs mb-2">منابع ورود</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedUser.source_links.length > 0 ? (
-                      selectedUser.source_links.map((s) => (
-                        <span key={s} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-lg text-xs font-mono">
-                          {s.length > 16 ? s.slice(0, 16) + "…" : s}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-slate-400 text-xs">ورود مستقیم</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Send Message */}
-              <div className="border border-blue-200 bg-blue-50 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3 font-semibold text-blue-700 text-sm">
-                  <Send size={15} />
-                  ارسال پیام به {selectedUser.first_name}
-                </div>
-                <div className="flex gap-2">
-                  <textarea
-                    value={sendText}
-                    onChange={(e) => setSendText(e.target.value)}
-                    placeholder="متن پیام..."
-                    rows={2}
-                    className="flex-1 px-3 py-2 rounded-xl border border-blue-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={handleSend}
-                    disabled={sending || !sendText.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition disabled:opacity-50 self-end"
-                  >
-                    {sending ? "..." : "ارسال"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Sent Messages */}
-              <div>
-                <button
-                  onClick={() => setShowSent(!showSent)}
-                  className="flex items-center gap-2 w-full text-right font-semibold text-slate-700 text-sm mb-2"
-                >
-                  <Send size={15} className="text-blue-500" />
-                  پیام‌های ارسالی از پنل ({sentMessages.filter(m => !m.deleted).length})
-                  {showSent ? <ChevronUp size={15} className="ml-auto" /> : <ChevronDown size={15} className="ml-auto" />}
-                </button>
-                {showSent && (
-                  loadingMessages ? (
-                    <div className="text-slate-400 text-sm text-center py-2">در حال بارگذاری...</div>
-                  ) : sentMessages.length === 0 ? (
-                    <div className="text-slate-400 text-sm text-center py-2">هیچ پیام ارسالی‌ای وجود ندارد</div>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {sentMessages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex items-start justify-between gap-2 bg-white border rounded-xl px-3 py-2 text-sm ${msg.deleted ? "opacity-50 border-slate-100" : "border-blue-100"}`}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className={`text-slate-700 break-words ${msg.deleted ? "line-through text-slate-400" : ""}`}>
-                              {msg.text}
-                            </div>
-                            <div className="text-slate-400 text-xs mt-1">{formatDate(msg.sent_at)}</div>
-                          </div>
-                          {!msg.deleted && (
-                            <button
-                              onClick={() => handleDelete(msg.id)}
-                              className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition flex-shrink-0"
-                              title="حذف پیام"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                          {msg.deleted && (
-                            <span className="text-xs text-slate-400 flex-shrink-0">حذف شده</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )
-                )}
-              </div>
-
-              {/* Received Messages */}
-              <div>
-                <button
-                  onClick={() => setShowReceived(!showReceived)}
-                  className="flex items-center gap-2 w-full text-right font-semibold text-slate-700 text-sm mb-2"
-                >
-                  <MessageSquare size={15} className="text-violet-500" />
-                  پیام‌های دریافتی ({userMessages.length})
-                  {showReceived ? <ChevronUp size={15} className="ml-auto" /> : <ChevronDown size={15} className="ml-auto" />}
-                </button>
-                {showReceived && (
-                  loadingMessages ? (
-                    <div className="text-slate-400 text-sm text-center py-2">در حال بارگذاری...</div>
-                  ) : userMessages.length === 0 ? (
-                    <div className="text-slate-400 text-sm text-center py-2">هیچ پیامی ثبت نشده</div>
-                  ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {[...userMessages].reverse().map((msg, i) => (
-                        <div key={i} className="bg-slate-50 rounded-xl px-3 py-2 text-sm">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="bg-violet-100 text-violet-700 px-2 py-0.5 rounded-lg text-xs">
-                              {msg.type}
-                            </span>
-                            <span className="text-slate-400 text-xs">{formatDate(msg.date)}</span>
-                          </div>
-                          {msg.text && (
-                            <div className="text-slate-700 break-words">{msg.text}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Users List */}
-      {loading && users.length === 0 ? (
+      {/* User List */}
+      {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-2xl p-5 h-20 animate-pulse border border-slate-100" />
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 h-16 animate-pulse" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
-          <User size={40} className="text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">
-            {search ? "کاربری با این مشخصات یافت نشد" : "هنوز هیچ کاربری ثبت نشده"}
-          </p>
-          {!search && (
-            <p className="text-slate-400 text-sm mt-1">
-              وقتی کاربری لینک شما را باز کند اینجا نمایش داده می‌شود
-            </p>
-          )}
+          <User size={40} className="mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-500">کاربری پیدا نشد</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -348,42 +204,177 @@ export default function UsersPage() {
             <button
               key={user.id}
               onClick={() => openUser(user)}
-              className="w-full bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-4 hover:border-blue-200 hover:shadow-sm transition text-right"
+              className="w-full bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:border-blue-200 hover:shadow-md transition text-right"
             >
-              {/* Avatar */}
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white font-bold text-base overflow-hidden flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
                 <img
                   src={getUserPhotoUrl(user.id)}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  className="w-full h-full object-cover"
                   alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
-                {displayName(user)[0]}
+                {(user.first_name || "؟")[0]}
               </div>
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-slate-800 truncate">
-                  {displayName(user)}
-                </div>
-                <div className="text-sm text-slate-400 truncate">
-                  {user.username ? `@${user.username} · ` : ""}
-                  آخرین فعالیت: {formatDate(user.last_seen)}
+              <div className="flex-1 min-w-0 text-right">
+                <div className="font-semibold text-slate-800">{displayName(user)}</div>
+                <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                  {user.username && <span>@{user.username}</span>}
+                  <span>ID: {user.id}</span>
                 </div>
               </div>
-              {/* Stats */}
-              <div className="flex items-center gap-3 text-xs text-slate-400 flex-shrink-0">
-                <div className="flex items-center gap-1">
-                  <MessageSquare size={12} />
+              <div className="text-right flex-shrink-0">
+                <div className="flex items-center gap-1 text-xs text-slate-400">
+                  <MessageCircle size={12} />
                   {user.message_count}
                 </div>
-                {user.source_links.length > 0 && (
-                  <div className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg">
-                    {user.source_links.length} لینک
-                  </div>
-                )}
+                <div className="text-xs text-slate-400 mt-1">{formatDate(user.last_seen).split("،")[0]}</div>
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* User Chat Modal */}
+      {selectedUser && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedUser(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center gap-4 p-5 border-b border-slate-100 flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+                <img
+                  src={getUserPhotoUrl(selectedUser.id)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                {(selectedUser.first_name || "؟")[0]}
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-slate-800">{displayName(selectedUser)}</div>
+                <div className="text-xs text-slate-400">
+                  {selectedUser.username ? `@${selectedUser.username} · ` : ""}
+                  ID: {selectedUser.id}
+                </div>
+              </div>
+              <button onClick={() => setSelectedUser(null)}>
+                <X size={20} className="text-slate-400 hover:text-slate-600 transition" />
+              </button>
+            </div>
+
+            {/* Chat Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+              {loadingMessages ? (
+                <div className="space-y-3 p-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-12 rounded-2xl animate-pulse ${i % 2 === 0 ? "bg-slate-200 mr-12" : "bg-blue-100 ml-12"}`}
+                    />
+                  ))}
+                </div>
+              ) : chatItems.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <MessageCircle size={36} className="mx-auto mb-2 opacity-50" />
+                  <p>هیچ پیامی ثبت نشده</p>
+                </div>
+              ) : (
+                <>
+                  {chatItems.map((item, idx) => {
+                    if (item.kind === "received") {
+                      const msg = item.msg;
+                      return (
+                        <div key={`r-${msg.message_id}-${idx}`} className="flex items-end gap-2">
+                          {/* User avatar */}
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {(selectedUser.first_name || "؟")[0]}
+                          </div>
+                          <div className="max-w-[72%]">
+                            <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm">
+                              <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{msg.text || "—"}</p>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1 mr-1">{formatTime(msg.date)}</div>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      const msg = item.msg as SentMessage;
+                      return (
+                        <div key={`s-${msg.id}-${idx}`} className="flex items-end gap-2 flex-row-reverse">
+                          {/* Bot avatar */}
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white flex-shrink-0">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="2" y="4" width="20" height="16" rx="2"/>
+                              <path d="M9 11h6M9 15h4"/>
+                              <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                              <circle cx="16" cy="8" r="1" fill="currentColor"/>
+                            </svg>
+                          </div>
+                          <div className="max-w-[72%]">
+                            <div className={`rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm ${msg.deleted ? "bg-slate-100 border border-slate-200" : "bg-blue-600"}`}>
+                              <p className={`text-sm leading-relaxed whitespace-pre-wrap ${msg.deleted ? "text-slate-400 line-through" : "text-white"}`}>
+                                {msg.text}
+                                {msg.deleted && " (حذف شده)"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 ml-1 justify-end">
+                              <span className="text-xs text-slate-400">{formatTime(msg.sent_at)}</span>
+                              {!msg.deleted && (
+                                <button
+                                  onClick={() => handleDelete(msg.id)}
+                                  className="text-xs text-red-400 hover:text-red-600 transition flex items-center gap-0.5"
+                                  title="حذف پیام ربات"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })}
+                  <div ref={chatEndRef} />
+                </>
+              )}
+            </div>
+
+            {/* Send Message */}
+            <div className="p-4 border-t border-slate-100 bg-white flex-shrink-0">
+              <div className="flex gap-2">
+                <textarea
+                  value={sendText}
+                  onChange={(e) => setSendText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="پیام ربات را بنویسید... (Enter = ارسال، Shift+Enter = خط جدید)"
+                  rows={2}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={sending || !sendText.trim()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition text-sm disabled:opacity-50 flex-shrink-0"
+                >
+                  {sending ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-1.5">پیام‌های ربات (آبی) قابل حذف هستند</p>
+            </div>
+          </div>
         </div>
       )}
     </div>
