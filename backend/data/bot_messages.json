@@ -1,0 +1,28 @@
+{
+  "welcome_with_link": {
+    "key": "welcome_with_link",
+    "title": "خوشامدگویی (با لینک اختصاصی)",
+    "description": "وقتی کاربر از طریق لینک اختصاصی وارد می‌شود",
+    "variables": [
+      "first_name",
+      "source_link"
+    ],
+    "text": "به مهدی میگم پروفایلش رو چک کردی😆\nدیگه چی میخوای بهش بگی😕"
+  },
+  "welcome_direct": {
+    "key": "welcome_direct",
+    "title": "خوشامدگویی (ورود مستقیم)",
+    "description": "وقتی کاربر مستقیم /start می‌زند",
+    "variables": [
+      "first_name"
+    ],
+    "text": "👻"
+  },
+  "message_received": {
+    "key": "message_received",
+    "title": "تأییدیه دریافت پیام",
+    "description": "پاسخ ربات به هر پیام عادی کاربر",
+    "variables": [],
+    "text": "باشه به مهدی میگم🤝"
+  }
+}
