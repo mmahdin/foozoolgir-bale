@@ -1,5 +1,6 @@
 """
 ماژول پردازش پیام‌های ربات
+⚠️ این فایل نسخه اصلاح‌شده است — تغییرات نسبت به نسخه اصلی با کامنت # FIX مشخص شده‌اند
 """
 import asyncio
 import logging
@@ -74,17 +75,23 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
         owner_name = owner.get("first_name", "صاحب لینک") if owner else "صاحب لینک"
         owner_username = owner.get("username", "") if owner else ""
 
+        # ═══════════════════════════════════════════════════════
+        # FIX: first_name باید اسم صاحب لینک باشد (کسی که لینکش کلیک شده)
+        # قبلاً اشتباهاً از first_name بازدیدکننده استفاده می‌شد
+        # ═══════════════════════════════════════════════════════
+        target_first_name = owner_name  # FIX: قبلاً بود: first_name
+
         # بررسی پیام ویژه سفارشی برای این کاربر
         custom = storage.get_special_message(
             owner_user_id, owner_username, "welcome_with_link",
-            first_name=first_name, owner_name=owner_name, source_link=source_token
+            first_name=target_first_name, owner_name=owner_name, source_link=source_token  # FIX
         )
         if custom:
             welcome_text = custom
         else:
             welcome_text = storage.get_bot_message(
                 "welcome_with_link",
-                first_name=first_name,
+                first_name=target_first_name,  # FIX: قبلاً بود: first_name=first_name
                 source_link=source_token,
                 owner_name=owner_name
             )

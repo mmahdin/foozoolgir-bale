@@ -3,7 +3,6 @@ import { MessageSquare, RefreshCw, User } from "lucide-react";
 import { fetchUsers, fetchUserMessages, BaleUser, BaleMessage, getUserPhotoUrl } from "../api";
 
 export default function MessagesPage() {
-  const [_users, setUsers] = useState<BaleUser[]>([]);
   const [allMessages, setAllMessages] = useState<(BaleMessage & { user?: BaleUser })[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -11,8 +10,6 @@ export default function MessagesPage() {
     setLoading(true);
     try {
       const usersData = await fetchUsers();
-      setUsers(usersData);
-      // Load messages for each user (limited)
       const msgs: (BaleMessage & { user?: BaleUser })[] = [];
       for (const user of usersData.slice(0, 20)) {
         try {
@@ -20,9 +17,10 @@ export default function MessagesPage() {
           (data.messages || []).forEach((m: BaleMessage) => {
             msgs.push({ ...m, user });
           });
-        } catch {}
+        } catch {
+          // skip
+        }
       }
-      // Sort by date desc
       msgs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setAllMessages(msgs.slice(0, 100));
     } catch {
@@ -32,15 +30,21 @@ export default function MessagesPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const formatDate = (iso: string) => {
     try {
       return new Date(iso).toLocaleString("fa-IR", {
-        month: "short", day: "numeric",
-        hour: "2-digit", minute: "2-digit",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
-    } catch { return iso; }
+    } catch {
+      return iso;
+    }
   };
 
   const displayName = (user: BaleUser) =>
@@ -92,7 +96,9 @@ export default function MessagesPage() {
                       src={getUserPhotoUrl(msg.user.id)}
                       alt=""
                       className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
                     />
                     {(msg.user.first_name || "؟")[0]}
                   </>

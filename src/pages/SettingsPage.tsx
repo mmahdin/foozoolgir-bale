@@ -23,7 +23,9 @@ export default function SettingsPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -92,9 +94,7 @@ export default function SettingsPage() {
             {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        <p className="text-xs text-slate-400">
-          توکن را از @BotFather در بله دریافت کنید
-        </p>
+        <p className="text-xs text-slate-400">توکن را از @BotFather در بله دریافت کنید</p>
       </div>
 
       {/* Bot Username */}
@@ -107,9 +107,7 @@ export default function SettingsPage() {
           placeholder="مثال: mybot"
           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
-        <p className="text-xs text-slate-400">
-          یوزرنیم ربات برای ساخت لینک‌های عمیق (deep link) استفاده می‌شود
-        </p>
+        <p className="text-xs text-slate-400">یوزرنیم ربات برای ساخت لینک‌های عمیق (deep link) استفاده می‌شود</p>
       </div>
 
       {/* Save Button */}

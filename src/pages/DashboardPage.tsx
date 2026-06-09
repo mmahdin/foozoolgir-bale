@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Users, Link2, MessageSquare, MousePointerClick,
-  Activity, Send, CheckCircle
-} from "lucide-react";
+import { Users, Link2, MessageSquare, MousePointerClick, Send, RefreshCw } from "lucide-react";
 import { fetchStats, Stats } from "../api";
 
 export default function DashboardPage() {
@@ -10,49 +7,54 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchStats();
+      setStats(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "خطا در دریافت آمار");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchStats()
-      .then(setStats)
-      .catch(() => setError("خطا در اتصال به سرور"))
-      .finally(() => setLoading(false));
+    load();
   }, []);
 
   const cards = stats
     ? [
         {
-          label: "تعداد کاربران",
+          icon: <Users size={22} className="text-blue-600" />,
           value: stats.total_users,
-          icon: <Users size={22} />,
-          color: "bg-blue-50 text-blue-600",
-          border: "border-blue-100",
+          label: "کاربران",
+          color: "bg-blue-50",
         },
         {
-          label: "لینک‌های اختصاصی",
+          icon: <Link2 size={22} className="text-violet-600" />,
           value: stats.total_links,
-          icon: <Link2 size={22} />,
-          color: "bg-violet-50 text-violet-600",
-          border: "border-violet-100",
+          label: "لینک‌ها",
+          color: "bg-violet-50",
         },
         {
-          label: "پیام‌های دریافتی",
+          icon: <MessageSquare size={22} className="text-emerald-600" />,
           value: stats.total_messages,
-          icon: <MessageSquare size={22} />,
-          color: "bg-amber-50 text-amber-600",
-          border: "border-amber-100",
+          label: "پیام‌ها",
+          color: "bg-emerald-50",
         },
         {
-          label: "کل کلیک‌ها",
+          icon: <MousePointerClick size={22} className="text-amber-600" />,
           value: stats.total_clicks,
-          icon: <MousePointerClick size={22} />,
-          color: "bg-rose-50 text-rose-600",
-          border: "border-rose-100",
+          label: "کلیک‌ها",
+          color: "bg-amber-50",
         },
         {
-          label: "پیام‌های ارسالی از ربات",
+          icon: <Send size={22} className="text-rose-600" />,
           value: stats.total_sent_messages,
-          icon: <Send size={22} />,
-          color: "bg-sky-50 text-sky-600",
-          border: "border-sky-100",
+          label: "پیام‌های ارسالی",
+          color: "bg-rose-50",
         },
       ]
     : [];
@@ -60,38 +62,42 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">داشبورد</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          {stats
-            ? stats.bot_token_set
-              ? `ربات @${stats.bot_username || "—"} فعال است`
-              : "⚠️ توکن ربات تنظیم نشده"
-            : "در حال بارگذاری..."}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">داشبورد</h1>
+          <p className="text-slate-500 text-sm">نمای کلی از وضعیت ربات</p>
+        </div>
+        <button
+          onClick={load}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-sm shadow-sm"
+        >
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          بارگذاری مجدد
+        </button>
       </div>
 
+      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm">
           ❌ {error} — بررسی کنید که سرور روی پورت ۸۰۰۰ اجرا شده باشد.
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {loading
           ? [1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="bg-white rounded-2xl border border-slate-100 p-5 h-28 animate-pulse"
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 h-28 animate-pulse"
               />
             ))
           : cards.map((card) => (
               <div
                 key={card.label}
-                className={`bg-white rounded-2xl border ${card.border} p-5 flex items-center gap-4 shadow-sm`}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4"
               >
-                <div className={`rounded-xl p-3 ${card.color}`}>
+                <div className={`w-12 h-12 rounded-xl ${card.color} flex items-center justify-center`}>
                   {card.icon}
                 </div>
                 <div>
@@ -107,22 +113,19 @@ export default function DashboardPage() {
       {/* Bot Status */}
       {stats && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity size={18} className="text-slate-500" />
-            <h2 className="font-semibold text-slate-700">وضعیت ربات</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div className="flex justify-between bg-slate-50 rounded-xl px-4 py-3">
+          <h2 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+            🤖 وضعیت ربات
+          </h2>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">یوزرنیم</span>
-              <span className="font-medium text-slate-700 font-mono">
+              <span className="text-slate-800 font-mono bg-slate-50 px-3 py-1 rounded-lg">
                 @{stats.bot_username || "—"}
               </span>
             </div>
-            <div className="flex justify-between bg-slate-50 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">توکن</span>
-              <span
-                className={`font-medium ${stats.bot_token_set ? "text-emerald-600" : "text-red-500"}`}
-              >
+              <span className="text-slate-800">
                 {stats.bot_token_set ? "✅ تنظیم شده" : "❌ تنظیم نشده"}
               </span>
             </div>
@@ -131,38 +134,38 @@ export default function DashboardPage() {
       )}
 
       {/* Quick Guide */}
-      <div className="bg-gradient-to-br from-blue-50 to-violet-50 border border-blue-100 rounded-2xl p-5">
-        <h3 className="font-semibold text-slate-700 mb-3">🚀 راهنمای سریع</h3>
-        <div className="space-y-2 text-sm text-slate-600">
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500 font-bold mt-0.5">1.</span>
-            <span>
-              کاربران می‌توانند دستور <code className="bg-white px-1 py-0.5 rounded text-blue-700">/getlink</code> را به ربات بفرستند تا لینک اختصاصی‌شان را دریافت کنند
-            </span>
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-700 mb-4">🚀 راهنمای سریع</h2>
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">۱</span>
+            <p className="text-sm text-slate-600">
+              کاربران می‌توانند دستور /getlink را به ربات بفرستند تا لینک اختصاصی‌شان را دریافت کنند
+            </p>
           </div>
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500 font-bold mt-0.5">2.</span>
-            <span>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">۲</span>
+            <p className="text-sm text-slate-600">
               وقتی کسی روی لینک اختصاصی یک نفر کلیک کند، ربات هر دو طرف را مطلع می‌کند
-            </span>
+            </p>
           </div>
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500 font-bold mt-0.5">3.</span>
-            <span>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">۳</span>
+            <p className="text-sm text-slate-600">
               از صفحه «لینک‌ها» می‌توانید لینک‌های اختصاصی بسازید و مدیریت کنید
-            </span>
+            </p>
           </div>
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500 font-bold mt-0.5">4.</span>
-            <span>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">۴</span>
+            <p className="text-sm text-slate-600">
               از صفحه «پیام‌های ویژه» می‌توانید برای هر کاربر پیام سفارشی‌سازی شده تنظیم کنید
-            </span>
+            </p>
           </div>
-          <div className="flex items-start gap-2">
-            <CheckCircle size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
-            <span>
-              در صفحه «کاربران» می‌توانید مکالمه کامل چت با هر کاربر را مشاهده کنید
-            </span>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">۵</span>
+            <p className="text-sm text-slate-600">
+              در صفحه «کاربران» می‌توانید مکالمه کامل چت با هر کاربر را مانند تلگرام مشاهده کنید
+            </p>
           </div>
         </div>
       </div>

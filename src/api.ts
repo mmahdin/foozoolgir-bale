@@ -86,7 +86,7 @@ export const fetchLinks = async (): Promise<BaleLink[]> => {
   return res.data.links;
 };
 
-export const createLink = async (name: string, label: string): Promise<BaleLink> => {
+export const createLink = async (name: string, label: string): Promise<any> => {
   const res = await api.post("/api/links", { name, label });
   return res.data;
 };
@@ -159,12 +159,12 @@ export const fetchBotMessages = async (): Promise<BotMessage[]> => {
   return res.data.messages;
 };
 
-export const updateBotMessage = async (key: string, text: string): Promise<BotMessage> => {
+export const updateBotMessage = async (key: string, text: string): Promise<any> => {
   const res = await api.put(`/api/bot-messages/${key}`, { text });
   return res.data;
 };
 
-export const resetBotMessage = async (key: string): Promise<BotMessage> => {
+export const resetBotMessage = async (key: string): Promise<any> => {
   const res = await api.delete(`/api/bot-messages/${key}`);
   return res.data;
 };
@@ -174,7 +174,7 @@ export const resetBotMessage = async (key: string): Promise<BotMessage> => {
 // ─────────────────────────────────────────────────────────
 
 export const fetchSpecialMessages = async (): Promise<SpecialMessageEntry[]> => {
-  const res = await api.get("/api/special-messages");
+  const res = await api.get("/api/special-message");
   return res.data.entries;
 };
 
@@ -207,7 +207,7 @@ export const setWebhook = async (webhookUrl: string): Promise<void> => {
   await api.post("/api/bot/webhook", { webhook_url: webhookUrl });
 };
 
-export const getUserLink = async (userId: number): Promise<{ token: string; deep_link: string }> => {
+export const getUserLink = async (userId: number): Promise<any> => {
   const res = await api.get(`/api/users/${userId}/link`);
   return res.data;
 };
