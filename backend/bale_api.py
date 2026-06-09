@@ -98,7 +98,6 @@ async def download_profile_photo(user_id: int) -> str:
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            # دریافت اطلاعات عکس پروفایل
             resp = await client.get(
                 _url("getUserProfilePhotos"),
                 params={"user_id": user_id, "limit": 1}
@@ -111,13 +110,11 @@ async def download_profile_photo(user_id: int) -> str:
             if not photos:
                 return ""
 
-            # دریافت بزرگترین سایز
             photo = photos[0][-1]
             file_id = photo.get("file_id", "")
             if not file_id:
                 return ""
 
-            # دریافت مسیر فایل
             file_resp = await client.get(
                 _url("getFile"),
                 params={"file_id": file_id}
@@ -130,11 +127,9 @@ async def download_profile_photo(user_id: int) -> str:
             if not file_path:
                 return ""
 
-            # دانلود فایل
             file_url = f"https://tapi.bale.ai/file/bot{BOT_TOKEN}/{file_path}"
             dl_resp = await client.get(file_url)
 
-            # ذخیره
             os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
             save_path = os.path.join(PROFILE_PHOTOS_DIR, f"{user_id}.jpg")
             with open(save_path, "wb") as f:

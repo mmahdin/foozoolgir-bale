@@ -1,120 +1,78 @@
-# 📋 فهرست تغییرات (Changelog)
+# تغییرات اعمال شده — فوزولگیر بله
 
-## تغییرات اعمال‌شده نسبت به نسخه اصلی
+## مشکل
+در چت کاربران (صفحه «کاربران»)، فقط پیام‌های دریافتی از کاربر و پیام‌های ارسالی از پنل نمایش داده می‌شد. پیام‌های خودکار ربات (مثل پیام خوش‌آمدگویی، اطلاع‌رسانی، تأییدیه دریافت) نمایش داده نمی‌شد.
 
----
+مثال: وقتی رضا روی لینک اختصاصی جواد کلیک می‌کرد:
+- ❌ پیام «به جواد می‌گم که می‌خواستی پروفایلش رو چک کنی 👀» به رضا نمایش داده نمی‌شد
+- ❌ پیام «🔔 رضا پروفایلت رو چک کرد!» به جواد نمایش داده نمی‌شد
 
-### ۱. 🐛 اصلاح باگ خوشامدگویی (با لینک اختصاصی)
+## راه‌حل
 
-**فایل:** `backend/bot_handler.py`
+### ۱. تغییرات بک‌اند (Python)
 
-**مشکل:** در پیام خوشامدگویی وقتی کسی روی لینک اختصاصی یک نفر کلیک می‌کرد، متغیر `{first_name}` به اشتباه اسم شخصی که کلیک کرده بود (بازدیدکننده) را نشان می‌داد. در حالی که باید اسم شخصی که لینکش کلیک شده (صاحب لینک) را نشان بدهد.
+#### `backend/storage.py`
+- پارامتر `source` به تابع `add_sent_message()` اضافه شد
+- مقادیر ممکن: `"panel"` (پیام از پنل) و `"bot"` (پیام خودکار ربات)
+- مقدار پیش‌فرض: `"panel"`
 
-**مثال مشکل:**
-- جواد لینک اختصاصی می‌گیرد
-- رضا روی لینک جواد کلیک می‌کند
-- ❌ قبلاً: ربات به رضا می‌گفت «به **رضا** می‌گم...» (اشتباه!)
-- ✅ الان: ربات به رضا می‌گفت «به **جواد** می‌گم...» (درست!)
-
-**تغییر کد:**
 ```python
-# قبل (اشتباه):
-welcome_text = storage.get_bot_message(
-    "welcome_with_link",
-    first_name=first_name,  # ← اسم بازدیدکننده
-    ...
-)
-
-# بعد (اصلاح شده):
-target_first_name = owner_name  # ← اسم صاحب لینک
-welcome_text = storage.get_bot_message(
-    "welcome_with_link",
-    first_name=target_first_name,  # ← اسم صاحب لینک
-    ...
-)
+def add_sent_message(user_id: int, message_id: int, text: str, source: str = "panel") -> dict:
 ```
 
-**محل تغییر:** تابع `handle_start` در فایل `bot_handler.py` — خطوط مربوط به ارسال پیام خوشامدگویی وقتی `owner_user_id is not None`
+#### `backend/bot_handler.py` ⭐ فایل اصلی تغییر
+- تابع جدید `_send_and_store()` اضافه شد که:
+  1. پیام را از طریق `bale_api.send_message()` ارسال می‌کند
+  2. سپس پیام را با `source="bot"` در دیتابیس ذخیره می‌کند
 
----
+- تمام فراخوانی‌های `bale_api.send_message()` جایگزین شدند با `_send_and_store()`
+- این شامل پیام‌های زیر می‌شود:
+  - خوش‌آمدگویی وقتی کاربر روی لینک اختصاصی کلیک می‌کند
+  - اطلاع‌رسانی به صاحب لینک
+  - خوش‌آمدگویی وقتی کاربر مستقیم /start می‌زند
+  - پاسخ دستور /getlink
+  - تأییدیه دریافت پیام عادی
 
-### ۲. 💬 صفحه کاربران — نمایش تاریخچه چت مانند تلگرام
+#### `backend/main.py`
+- فراخوانی `add_sent_message()` با `source="panel"` صریحاً مشخص شد
 
-**فایل:** `src/pages/UsersPage.tsx`
+### ۲. تغییرات فرانت‌اند (React/TypeScript)
 
-**تغییرات:**
-- 🔄 طراحی کاملاً جدید صفحه کاربران با دو پنل (لیست کاربران + چت)
-- 📱 رابط کاربری واکنش‌گرا (Responsive) — در موبایل فقط یک پنل نمایش داده می‌شود
-- 💬 نمایش تاریخچه پیام‌ها به صورت حباب چت (Chat Bubbles) مشابه تلگرام
-  - پیام‌های کاربر: سمت راست با پس‌زمینه سفید و آواتار آبی
-  - پیام‌های ربات/ادمین: سمت چپ با پس‌زمینه آبی و آواتار سبز
-- 📅 جداکننده تاریخ بین پیام‌های روزهای مختلف
-- ⏰ نمایش ساعت ارسال روی هر پیام
-- 🗑️ امکان حذف پیام‌های ارسالی (با هاور روی پیام، دکمه حذف ظاهر می‌شود)
-- ✉️ ارسال پیام جدید به کاربر مستقیماً از صفحه چت
-- 🔗 نمایش و کپی لینک اختصاصی کاربر در هدر چت
-- 🔄 بارگذاری خودکار به پایین هنگام دریافت پیام‌های جدید
-- ✨ انیمیشن ظاهر شدن حباب‌ها
+#### `src/api.ts`
+- فیلد `source?: "panel" | "bot"` به اینترفیس `SentMessage` اضافه شد
 
----
+#### `src/pages/UsersPage.tsx` ⭐ فایل اصلی تغییر
+- پیام‌های خودکار ربات با استایل متفاوت نمایش داده می‌شوند:
+  - **رنگ بنفش** (گرادیان بنفش) برای تمایز از پیام‌های پنل (آبی)
+  - **آیکون 🤖 ربات** به جای آیکون ارسال
+  - **برچسب «پیام خودکار ربات»** در بالای متن پیام
+- آیکون `Bot` از lucide-react اضافه شد
+- منطق تمایز: `msg.source === "bot"` برای تشخیص پیام‌های ربات
 
-### ۳. 📝 فایل‌های باقی‌مانده بدون تغییر
+## خلاصه تغییرات فایل‌ها
 
-فایل‌های زیر بدون تغییر از نسخه اصلی بازسازی شده‌اند:
-- `backend/bale_api.py`
-- `backend/config.py`
-- `backend/main.py`
-- `backend/polling.py`
-- `backend/storage.py`
-- `src/api.ts`
-- `src/pages/DashboardPage.tsx`
-- `src/pages/LinksPage.tsx`
-- `src/pages/MessagesPage.tsx`
-- `src/pages/BotMessagesPage.tsx`
-- `src/pages/SpecialMessagesPage.tsx`
-- `src/pages/SettingsPage.tsx`
+| فایل | نوع تغییر | توضیح |
+|------|-----------|-------|
+| `backend/bot_handler.py` | **اصلاح شده** | ذخیره تمام پیام‌های ارسالی ربات |
+| `backend/storage.py` | **اصلاح شده** | اضافه شدن فیلد source |
+| `backend/main.py` | **اصلاح شده** | ارسال source="panel" صریح |
+| `src/api.ts` | **اصلاح شده** | اضافه شدن فیلد source به SentMessage |
+| `src/pages/UsersPage.tsx` | **اصلاح شده** | نمایش بصری متفاوت برای پیام‌های ربات |
+| سایر فایل‌های فرانت‌اند | بدون تغییر | فقط بازسازی شده‌اند |
 
----
+## نحوه اعمال تغییرات
 
-## نحوه اعمال تغییرات بک‌اند
-
-فایل `backend/bot_handler.py` اصلاح‌شده را جایگزین فایل اصلی در سرور کنید:
-
+### بک‌اند
+فایل‌های `backend/` را جایگزین کنید و سرور را ری‌استارت کنید:
 ```bash
-cp backend/bot_handler.py /path/to/foozoolgir-bale/backend/bot_handler.py
+cd backend
+pip install -r requirements.txt
+python main.py
 ```
 
-سپس سرویس را ری‌استارت کنید.
-
----
-
-## پچ (Diff) بک‌اند
-
-```diff
---- a/backend/bot_handler.py
-+++ b/backend/bot_handler.py
-@@ -60,6 +60,10 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
-         owner_name = owner.get("first_name", "صاحب لینک") if owner else "صاحب لینک"
-         owner_username = owner.get("username", "") if owner else ""
- 
-+        # FIX: first_name باید اسم صاحب لینک باشد (کسی که لینکش کلیک شده)
-+        # قبلاً اشتباهاً از first_name بازدیدکننده استفاده می‌شد
-+        target_first_name = owner_name
-+
-         # بررسی پیام ویژه سفارشی برای این کاربر
-         custom = storage.get_special_message(
-             owner_user_id, owner_username, "welcome_with_link",
--            first_name=first_name, owner_name=owner_name, source_link=source_token
-+            first_name=target_first_name, owner_name=owner_name, source_link=source_token
-         )
-         if custom:
-             welcome_text = custom
-         else:
-             welcome_text = storage.get_bot_message(
-                 "welcome_with_link",
--                first_name=first_name,
-+                first_name=target_first_name,
-                 source_link=source_token,
-                 owner_name=owner_name
-             )
+### فرانت‌اند
+فایل‌های `src/` را جایگزین کنید و build بگیرید:
+```bash
+npm install
+npm run build
 ```

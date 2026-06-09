@@ -51,6 +51,7 @@ export interface SentMessage {
   text: string;
   sent_at: string;
   deleted: boolean;
+  source?: "panel" | "bot"; // ✨ NEW: distinguish panel-sent vs bot-sent messages
 }
 
 export interface Stats {
@@ -86,7 +87,7 @@ export const fetchLinks = async (): Promise<BaleLink[]> => {
   return res.data.links;
 };
 
-export const createLink = async (name: string, label: string): Promise<any> => {
+export const createLink = async (name: string, label: string): Promise<BaleLink> => {
   const res = await api.post("/api/links", { name, label });
   return res.data;
 };
@@ -159,12 +160,12 @@ export const fetchBotMessages = async (): Promise<BotMessage[]> => {
   return res.data.messages;
 };
 
-export const updateBotMessage = async (key: string, text: string): Promise<any> => {
+export const updateBotMessage = async (key: string, text: string): Promise<BotMessage> => {
   const res = await api.put(`/api/bot-messages/${key}`, { text });
   return res.data;
 };
 
-export const resetBotMessage = async (key: string): Promise<any> => {
+export const resetBotMessage = async (key: string): Promise<BotMessage> => {
   const res = await api.delete(`/api/bot-messages/${key}`);
   return res.data;
 };
@@ -207,7 +208,7 @@ export const setWebhook = async (webhookUrl: string): Promise<void> => {
   await api.post("/api/bot/webhook", { webhook_url: webhookUrl });
 };
 
-export const getUserLink = async (userId: number): Promise<any> => {
+export const getUserLink = async (userId: number): Promise<{ token: string; deep_link: string }> => {
   const res = await api.get(`/api/users/${userId}/link`);
   return res.data;
 };

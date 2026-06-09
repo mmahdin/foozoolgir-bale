@@ -14,7 +14,7 @@ export default function DashboardPage() {
       const data = await fetchStats();
       setStats(data);
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "خطا در دریافت آمار");
+      setError(err?.response?.data?.detail || "خطا در دریافت اطلاعات داشبورد");
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">داشبورد</h1>
-          <p className="text-slate-500 text-sm">نمای کلی از وضعیت ربات</p>
+          <p className="text-slate-500 text-sm">خلاصه وضعیت ربات شما</p>
         </div>
         <button
           onClick={load}

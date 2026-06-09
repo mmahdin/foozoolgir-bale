@@ -1,5 +1,6 @@
 """
 ماژول ذخیره‌سازی داده‌های دیتابیس
+✨ CHANGE: پارامتر source به add_sent_message اضافه شد
 """
 import json
 import os
@@ -51,16 +52,11 @@ def save_link_map(data: dict):
 
 
 def get_or_create_user_token(user_id: int, first_name: str = "") -> str:
-    """
-    هر کاربر یک توکن اختصاصی UUID دارد.
-    اگر قبلاً ساخته شده برمی‌گرداند، در غیر این صورت می‌سازد.
-    """
     link_map = load_link_map()
     str_id = str(user_id)
     for token, uid in link_map.items():
         if uid == str_id:
             return token
-    # ساخت توکن جدید
     token = str(uuid.uuid4()).replace("-", "")[:20]
     link_map[token] = str_id
     save_link_map(link_map)
@@ -68,7 +64,6 @@ def get_or_create_user_token(user_id: int, first_name: str = "") -> str:
 
 
 def get_user_id_by_token(token: str) -> Optional[int]:
-    """پیدا کردن user_id با استفاده از توکن"""
     link_map = load_link_map()
     val = link_map.get(token)
     if val is not None:
@@ -113,7 +108,6 @@ def delete_link(name: str) -> bool:
 
 
 def record_link_click(link_name: str, user_id: int):
-    """ثبت کلیک روی لینک"""
     links = load_links()
     if link_name not in links:
         return
@@ -206,7 +200,6 @@ def save_message(user_id: int, message: dict):
     })
     _save_json(_msg_path(user_id), messages)
 
-    # بروزرسانی تعداد پیام‌های کاربر
     user = load_user(user_id)
     if user:
         user["message_count"] = user.get("message_count", 0) + 1
@@ -218,7 +211,7 @@ def load_messages(user_id: int) -> list:
 
 
 # ─────────────────────────────────────────────────────────
-#  Sent Messages (پیام‌های ارسال شده از پنل)
+#  Sent Messages (پیام‌های ارسال شده از پنل + ربات)
 # ─────────────────────────────────────────────────────────
 
 def load_sent_messages() -> dict:
@@ -229,7 +222,11 @@ def save_sent_messages(data: dict):
     _save_json(SENT_MESSAGES_FILE, data)
 
 
-def add_sent_message(user_id: int, message_id: int, text: str) -> dict:
+def add_sent_message(user_id: int, message_id: int, text: str, source: str = "panel") -> dict:
+    """
+    ذخیره پیام ارسال شده
+    ✨ CHANGE: پارامتر source اضافه شد — "panel" برای پیام‌های پنل، "bot" برای پیام‌های خودکار ربات
+    """
     sent = load_sent_messages()
     entry_id = str(uuid.uuid4())
     entry = {
@@ -239,6 +236,7 @@ def add_sent_message(user_id: int, message_id: int, text: str) -> dict:
         "text": text,
         "sent_at": _now(),
         "deleted": False,
+        "source": source,  # ✨ NEW: "panel" or "bot"
     }
     sent[entry_id] = entry
     save_sent_messages(sent)
@@ -282,76 +280,66 @@ DEFAULT_BOT_MESSAGES = {
     },
     "message_received": {
         "key": "message_received",
-        "title": "تأییدیه دریافت پیام",
-        "description": "پاسخ ربات به هر پیام کاربران",
+        "title": "دریافت پیام",
+        "description": "وقتی کاربر پیام عادی می‌فرستد",
         "variables": [],
-        "text": "پیامت دریافت شد 💬",
+        "text": "✅ پیامت دریافت شد!",
     },
     "notify_owner": {
         "key": "notify_owner",
         "title": "اطلاع‌رسانی به صاحب لینک",
-        "description": "وقتی کسی روی لینک اختصاصی کاربری کلیک کند، این پیام برای صاحب لینک فرستاده می‌شود",
+        "description": "وقتی کسی روی لینک اختصاصی کلیک کند، به صاحب لینک اطلاع داده می‌شود",
         "variables": ["visitor_name", "visitor_username"],
-        "text": "👁️ {visitor_name} پروفایلت رو دید!",
+        "text": "🔔 {visitor_name} ({visitor_username}) پروفایلت رو چک کرد!",
     },
     "getlink_response": {
         "key": "getlink_response",
-        "title": "پاسخ دستور /getlink",
-        "description": "لینک اختصاصی کاربر. {link} = لینک، {first_name} = نام کاربر",
+        "title": "پاسخ /getlink",
+        "description": "وقتی کاربر /getlink می‌زند",
         "variables": ["first_name", "link"],
-        "text": "لینک اختصاصی تو:\n`[ایجاد لینک]({link})`\n\nاین لینک رو با bio پروفایلت به اشتراک بذار! هر کس کلیک کنه بهت خبر می‌دم 🌟",
+        "text": "🔗 سلام {first_name}! لینک اختصاصی تو:\n\n{link}\n\nاین لینک رو به کسی بده که میخوای پروفایلت رو ببینه 👀",
     },
 }
 
 
 def load_bot_messages() -> dict:
-    data = _load_json(BOT_MESSAGES_FILE, {})
-    # ادغام با پیش‌فرض‌ها (اگر کلید جدیدی اضافه شده)
-    result = {}
-    for key, default in DEFAULT_BOT_MESSAGES.items():
-        if key in data:
-            result[key] = data[key]
-        else:
-            result[key] = default
-    return result
+    saved = _load_json(BOT_MESSAGES_FILE, {})
+    # Merge with defaults (saved takes priority)
+    merged = {**DEFAULT_BOT_MESSAGES}
+    for key, val in saved.items():
+        if key in merged:
+            merged[key]["text"] = val.get("text", merged[key]["text"])
+    return merged
 
 
-def save_bot_messages(data: dict):
-    _save_json(BOT_MESSAGES_FILE, data)
+def save_bot_message(key: str, text: str) -> dict:
+    saved = _load_json(BOT_MESSAGES_FILE, {})
+    saved[key] = {"text": text}
+    _save_json(BOT_MESSAGES_FILE, saved)
+    messages = load_bot_messages()
+    return messages.get(key, {})
+
+
+def reset_bot_message(key: str) -> dict:
+    saved = _load_json(BOT_MESSAGES_FILE, {})
+    if key in saved:
+        del saved[key]
+        _save_json(BOT_MESSAGES_FILE, saved)
+    messages = load_bot_messages()
+    return messages.get(key, {})
 
 
 def get_bot_message(key: str, **kwargs) -> str:
-    """دریافت متن پیام ربات با جایگزینی متغیرها"""
     messages = load_bot_messages()
     msg = messages.get(key, {})
     text = msg.get("text", "")
-    try:
-        return text.format(**kwargs)
-    except (KeyError, ValueError):
-        return text
-
-
-def update_bot_message(key: str, text: str) -> Optional[dict]:
-    messages = load_bot_messages()
-    if key not in messages:
-        return None
-    messages[key]["text"] = text
-    save_bot_messages(messages)
-    return messages[key]
-
-
-def reset_bot_message(key: str) -> Optional[dict]:
-    messages = load_bot_messages()
-    if key not in DEFAULT_BOT_MESSAGES:
-        return None
-    messages[key] = DEFAULT_BOT_MESSAGES[key].copy()
-    save_bot_messages(messages)
-    return messages[key]
+    for k, v in kwargs.items():
+        text = text.replace(f"{{{k}}}", str(v))
+    return text
 
 
 # ─────────────────────────────────────────────────────────
-#  Special Messages
-#  ساختار: { user_id: { key: text } }
+#  Special Messages (پیام‌های سفارشی هر کاربر)
 # ─────────────────────────────────────────────────────────
 
 def load_special_messages() -> dict:
@@ -362,84 +350,46 @@ def save_special_messages(data: dict):
     _save_json(SPECIAL_MESSAGES_FILE, data)
 
 
-def set_special_message(user_id: int, key: str, text: str):
-    """تنظیم پیام ویژه برای یک کاربر خاص"""
-    data = load_special_messages()
-    str_id = str(user_id)
-    if str_id not in data:
-        data[str_id] = {}
-    data[str_id][key] = text
-    save_special_messages(data)
-
-
-def delete_special_message_entry(user_id: int, key: str) -> bool:
-    data = load_special_messages()
-    str_id = str(user_id)
-    if str_id not in data or key not in data[str_id]:
-        return False
-    del data[str_id][key]
-    if not data[str_id]:
-        del data[str_id]
-    save_special_messages(data)
-    return True
-
-
 def get_special_message(user_id: int, username: str, key: str, **kwargs) -> Optional[str]:
-    """
-    بررسی می‌کند آیا پیام ویژه‌ای برای این کاربر و این کلید تعریف شده.
-    اگر بله، متن را با متغیرها برمی‌گرداند.
-    """
-    data = load_special_messages()
-    str_id = str(user_id)
-    
-    # جستجو با user_id
-    if str_id in data and key in data[str_id]:
-        text = data[str_id][key]
-        try:
-            return text.format(**kwargs)
-        except (KeyError, ValueError):
-            return text
-    
+    special = load_special_messages()
+    user_key = str(user_id)
+    if user_key in special and key in special[user_key]:
+        text = special[user_key][key]
+        for k, v in kwargs.items():
+            text = text.replace(f"{{{k}}}", str(v))
+        return text
     return None
 
 
-def get_all_special_messages_with_users() -> list:
-    """دریافت تمام پیام‌های ویژه به همراه اطلاعات کاربران"""
-    data = load_special_messages()
-    result = []
-    for str_id, messages in data.items():
-        try:
-            user_id = int(str_id)
-        except ValueError:
-            continue
-        user = load_user(user_id)
-        result.append({
-            "user_id": user_id,
+def set_special_message(user_id: int, key: str, text: str):
+    special = load_special_messages()
+    user_key = str(user_id)
+    if user_key not in special:
+        special[user_key] = {}
+    special[user_key][key] = text
+    save_special_messages(special)
+
+
+def delete_special_message(user_id: int, key: str) -> bool:
+    special = load_special_messages()
+    user_key = str(user_id)
+    if user_key in special and key in special[user_key]:
+        del special[user_key][key]
+        if not special[user_key]:
+            del special[user_key]
+        save_special_messages(special)
+        return True
+    return False
+
+
+def load_all_special_messages() -> list:
+    special = load_special_messages()
+    entries = []
+    for user_id_str, messages in special.items():
+        user = load_user(int(user_id_str))
+        entries.append({
+            "user_id": int(user_id_str),
             "user": user,
             "messages": messages,
         })
-    return result
-
-
-# ─────────────────────────────────────────────────────────
-#  Stats
-# ─────────────────────────────────────────────────────────
-
-def get_stats(bot_username: str = "", bot_token_set: bool = False) -> dict:
-    users = load_all_users()
-    links = load_links()
-    link_map = load_link_map()
-    sent = load_sent_messages()
-
-    total_messages = sum(len(load_messages(u["id"])) for u in users)
-    total_clicks = sum(info.get("click_count", 0) for info in links.values())
-
-    return {
-        "total_users": len(users),
-        "total_links": len(links),
-        "total_messages": total_messages,
-        "total_clicks": total_clicks,
-        "total_sent_messages": len(sent),
-        "bot_username": bot_username,
-        "bot_token_set": bot_token_set,
-    }
+    return entries

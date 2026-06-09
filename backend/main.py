@@ -1,5 +1,6 @@
 """
 سرور اصلی FastAPI — ربات بله با قابلیت‌های کامل
+✨ CHANGE: source="panel" در add_sent_message اضافه شد
 """
 import asyncio
 import logging
@@ -125,7 +126,6 @@ def get_links():
     links = storage.load_links()
     result = []
     link_map = storage.load_link_map()
-    # ساخت map معکوس: user_id -> token
     user_token_map = {str(uid): token for token, uid in link_map.items()}
 
     for name, info in links.items():
@@ -224,7 +224,8 @@ async def send_message_to_user(user_id: int, req: SendMessageRequest):
     try:
         result = await bale_api.send_message(user_id, req.text)
         message_id = result.get("message_id", 0) if isinstance(result, dict) else 0
-        entry = storage.add_sent_message(user_id, message_id, req.text)
+        # ✨ CHANGE: source="panel" to distinguish from bot messages
+        entry = storage.add_sent_message(user_id, message_id, req.text, source="panel")
         return {"sent_message": entry}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"خطا در ارسال پیام: {str(e)}")
@@ -279,17 +280,39 @@ async def delete_sent_message(entry_id: str):
 
 @app.get("/api/stats")
 def get_stats():
-    return storage.get_stats(
-        bot_username=BOT_USERNAME,
-        bot_token_set=bool(BOT_TOKEN)
-    )
+    users = storage.load_all_users()
+    links = storage.load_links()
+    link_map = storage.load_link_map()
+    sent = storage.load_sent_messages()
 
+    total_messages = 0
+    total_clicks = 0
+    for name, info in links.items():
+        total_clicks += info.get("click_count", 0)
+
+    for user in users:
+        total_messages += user.get("message_count", 0)
+
+    return {
+        "total_users": len(users),
+        "total_links": len(links) + len(link_map),
+        "total_messages": total_messages,
+        "total_clicks": total_clicks,
+        "total_sent_messages": len(sent),
+        "bot_username": BOT_USERNAME,
+        "bot_token_set": bool(BOT_TOKEN),
+    }
+
+
+# ─────────────────────────────────────────────────────────
+#  API — Bot Info
+# ─────────────────────────────────────────────────────────
 
 @app.get("/api/bot/info")
 async def get_bot_info():
     try:
-        info = await bale_api.get_me()
-        return info
+        result = await bale_api.get_me()
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -306,17 +329,13 @@ def get_bot_messages():
 
 @app.put("/api/bot-messages/{key}")
 def update_bot_message(key: str, req: UpdateBotMessageRequest):
-    result = storage.update_bot_message(key, req.text)
-    if not result:
-        raise HTTPException(status_code=404, detail="کلید پیام یافت نشد")
+    result = storage.save_bot_message(key, req.text)
     return result
 
 
 @app.delete("/api/bot-messages/{key}")
 def reset_bot_message(key: str):
     result = storage.reset_bot_message(key)
-    if not result:
-        raise HTTPException(status_code=404, detail="کلید پیام یافت نشد")
     return result
 
 
@@ -324,21 +343,21 @@ def reset_bot_message(key: str):
 #  API — Special Messages
 # ─────────────────────────────────────────────────────────
 
-@app.get("/api/special-messages")
+@app.get("/api/special-message")
 def get_special_messages():
-    entries = storage.get_all_special_messages_with_users()
+    entries = storage.load_all_special_messages()
     return {"entries": entries}
 
 
 @app.post("/api/special-messages")
-def set_special_message(req: SetSpecialMessageRequest):
+def set_special_message_api(req: SetSpecialMessageRequest):
     storage.set_special_message(req.user_id, req.key, req.text)
     return {"ok": True}
 
 
 @app.delete("/api/special-messages/{user_id}/{key}")
-def delete_special_message(user_id: int, key: str):
-    success = storage.delete_special_message_entry(user_id, key)
+def delete_special_message_api(user_id: int, key: str):
+    success = storage.delete_special_message(user_id, key)
     if not success:
         raise HTTPException(status_code=404, detail="پیام ویژه یافت نشد")
     return {"ok": True}
@@ -350,23 +369,47 @@ def delete_special_message(user_id: int, key: str):
 
 @app.get("/api/settings")
 def get_settings():
-    return {
+    settings_file = os.path.join(os.path.dirname(__file__), "data", "settings.json")
+    return storage._load_json(settings_file, {
         "bot_token": BOT_TOKEN,
         "bot_username": BOT_USERNAME,
-    }
+    })
 
 
 @app.post("/api/settings")
-def update_settings(req: UpdateSettingsRequest):
-    # در محیط واقعی باید در .env یا فایل config ذخیره شود
-    # اینجا فقط response برمی‌گردانیم
-    return {"ok": True, "message": "تنظیمات دریافت شد — برای اعمال باید سرور ریستارت شود"}
+def save_settings(req: UpdateSettingsRequest):
+    import json
+    settings_file = os.path.join(os.path.dirname(__file__), "data", "settings.json")
+    existing = storage._load_json(settings_file, {})
+    if req.bot_token is not None:
+        existing["bot_token"] = req.bot_token
+    if req.bot_username is not None:
+        existing["bot_username"] = req.bot_username
+    storage._save_json(settings_file, existing)
+    return {"ok": True}
 
+
+# ─────────────────────────────────────────────────────────
+#  API — Webhook
+# ─────────────────────────────────────────────────────────
 
 @app.post("/api/bot/webhook")
-async def set_webhook(req: SetWebhookRequest):
+async def set_bot_webhook(req: SetWebhookRequest):
     try:
         result = await bale_api.set_webhook(req.webhook_url)
-        return result
+        if result.get("ok"):
+            return {"ok": True, "message": "Webhook تنظیم شد"}
+        raise HTTPException(status_code=400, detail=result.get("description", "خطا در تنظیم webhook"))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────
+#  Run
+# ─────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

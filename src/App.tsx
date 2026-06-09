@@ -80,8 +80,8 @@ export default function App() {
               <Bot size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-slate-800 text-sm">فوزولگیر</h1>
-              <p className="text-xs text-slate-400">مدیریت ربات بله</p>
+              <h1 className="font-bold text-slate-800 text-sm">فوزولگیر بله</h1>
+              <p className="text-xs text-slate-400">مدیریت ربات</p>
             </div>
           </div>
         </div>

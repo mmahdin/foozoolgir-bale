@@ -1,6 +1,6 @@
 """
 ماژول پردازش پیام‌های ربات
-⚠️ این فایل نسخه اصلاح‌شده است — تغییرات نسبت به نسخه اصلی با کامنت # FIX مشخص شده‌اند
+✨ CHANGE: بعد از هر send_message، پیام در sent_messages ذخیره می‌شود با source="bot"
 """
 import asyncio
 import logging
@@ -11,6 +11,18 @@ import storage
 from config import BOT_USERNAME
 
 logger = logging.getLogger(__name__)
+
+
+async def _send_and_store(chat_id: int, text: str, source: str = "bot") -> dict:
+    """
+    ✨ NEW: ارسال پیام و ذخیره آن در sent_messages
+    این تابع هر پیامی که ربات می‌فرسته رو در دیتابیس ذخیره می‌کنه
+    تا در چت نمایش داده بشه.
+    """
+    result = await bale_api.send_message(chat_id, text)
+    message_id = result.get("message_id", 0) if isinstance(result, dict) else 0
+    storage.add_sent_message(chat_id, message_id, text, source=source)
+    return result
 
 
 async def handle_update(update: dict) -> None:
@@ -51,7 +63,6 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
     source_token = parts[1].strip() if len(parts) > 1 else ""
 
     # بررسی می‌کنیم آیا source_token یک توکن لینک اختصاصی است
-    # یا اینکه یک نام لینک عمومی است
     owner_user_id = None
     if source_token:
         owner_user_id = storage.get_user_id_by_token(source_token)
@@ -71,32 +82,28 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
     if source_token and owner_user_id is not None:
         # کاربر روی لینک اختصاصی یک نفر دیگر کلیک کرده
         owner = storage.load_user(owner_user_id)
-        # owner_name = first_name صاحب لینک (کسی که لینکش کلیک شده)
         owner_name = owner.get("first_name", "صاحب لینک") if owner else "صاحب لینک"
         owner_username = owner.get("username", "") if owner else ""
 
-        # ═══════════════════════════════════════════════════════
-        # FIX: first_name باید اسم صاحب لینک باشد (کسی که لینکش کلیک شده)
-        # قبلاً اشتباهاً از first_name بازدیدکننده استفاده می‌شد
-        # ═══════════════════════════════════════════════════════
-        target_first_name = owner_name  # FIX: قبلاً بود: first_name
+        target_first_name = owner_name
 
         # بررسی پیام ویژه سفارشی برای این کاربر
         custom = storage.get_special_message(
             owner_user_id, owner_username, "welcome_with_link",
-            first_name=target_first_name, owner_name=owner_name, source_link=source_token  # FIX
+            first_name=target_first_name, owner_name=owner_name, source_link=source_token
         )
         if custom:
             welcome_text = custom
         else:
             welcome_text = storage.get_bot_message(
                 "welcome_with_link",
-                first_name=target_first_name,  # FIX: قبلاً بود: first_name=first_name
+                first_name=target_first_name,
                 source_link=source_token,
                 owner_name=owner_name
             )
 
-        await bale_api.send_message(user_id, welcome_text)
+        # ✨ CHANGE: ذخیره پیام خوش‌آمدگویی ارسال شده توسط ربات
+        await _send_and_store(user_id, welcome_text)
 
         # اطلاع‌رسانی به صاحب لینک (اگر خودش نباشد)
         if owner_user_id != user_id:
@@ -112,7 +119,8 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
                 visitor_name=visitor_name,
                 visitor_username=visitor_username
             )
-            await bale_api.send_message(owner_user_id, notify_text)
+            # ✨ CHANGE: ذخیره پیام اطلاع‌رسانی ارسال شده توسط ربات
+            await _send_and_store(owner_user_id, notify_text)
 
     elif source_link:
         # لینک عمومی (name-based link) - بدون owner
@@ -122,14 +130,16 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
             source_link=source_link,
             owner_name=source_link
         )
-        await bale_api.send_message(user_id, welcome_text)
+        # ✨ CHANGE: ذخیره پیام خوش‌آمدگویی ارسال شده توسط ربات
+        await _send_and_store(user_id, welcome_text)
     else:
         # ورود مستقیم
         welcome_text = storage.get_bot_message(
             "welcome_direct",
             first_name=first_name
         )
-        await bale_api.send_message(user_id, welcome_text)
+        # ✨ CHANGE: ذخیره پیام خوش‌آمدگویی ارسال شده توسط ربات
+        await _send_and_store(user_id, welcome_text)
 
     # ذخیره پیام /start در لیست پیام‌های کاربر
     storage.save_message(user_id, message)
@@ -140,7 +150,6 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
 async def handle_getlink(message: dict, from_user: dict) -> None:
     """
     دستور /getlink - ساخت لینک اختصاصی برای کاربر
-    به هر کاربر یک توکن UUID منحصربه‌فرد می‌دهد و لینک ساخته می‌شود
     """
     user_id = from_user["id"]
     first_name = from_user.get("first_name", "")
@@ -169,7 +178,8 @@ async def handle_getlink(message: dict, from_user: dict) -> None:
         link=deep_link
     )
 
-    await bale_api.send_message(user_id, response_text)
+    # ✨ CHANGE: ذخیره پاسخ /getlink ارسال شده توسط ربات
+    await _send_and_store(user_id, response_text)
 
     # ذخیره پیام
     storage.save_message(user_id, message)
@@ -192,7 +202,8 @@ async def handle_regular_message(message: dict, from_user: dict) -> None:
         user_id, from_user.get("username", ""), "message_received"
     )
     response_text = custom or storage.get_bot_message("message_received")
-    await bale_api.send_message(user_id, response_text)
+    # ✨ CHANGE: ذخیره تأییدیه دریافت ارسال شده توسط ربات
+    await _send_and_store(user_id, response_text)
 
     logger.info(f"[BOT] message | user={user_id}")
 
