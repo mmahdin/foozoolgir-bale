@@ -1,31 +1,27 @@
 import { useState } from "react";
-import { Toaster } from "react-hot-toast";
 import {
-  LayoutDashboard,
-  Link2,
-  Users,
-  MessageSquare,
-  Settings,
-  Bot,
-  Menu,
-  X,
-  MessageSquareText,
+  LayoutDashboard, Link2, Users, MessageSquare,
+  MessageCircle, Settings, Star, Menu, X, Bot
 } from "lucide-react";
+import { Toaster } from "react-hot-toast";
+
 import DashboardPage from "./pages/DashboardPage";
 import LinksPage from "./pages/LinksPage";
 import UsersPage from "./pages/UsersPage";
 import MessagesPage from "./pages/MessagesPage";
-import SettingsPage from "./pages/SettingsPage";
 import BotMessagesPage from "./pages/BotMessagesPage";
+import SpecialMessagesPage from "./pages/SpecialMessagesPage";
+import SettingsPage from "./pages/SettingsPage";
 
-type Page = "dashboard" | "links" | "users" | "messages" | "bot-messages" | "settings";
+type Page = "dashboard" | "links" | "users" | "messages" | "bot-messages" | "special-messages" | "settings";
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "داشبورد", icon: <LayoutDashboard size={18} /> },
-  { id: "links", label: "لینک‌های اختصاصی", icon: <Link2 size={18} /> },
+  { id: "links", label: "لینک‌ها", icon: <Link2 size={18} /> },
   { id: "users", label: "کاربران", icon: <Users size={18} /> },
   { id: "messages", label: "پیام‌ها", icon: <MessageSquare size={18} /> },
-  { id: "bot-messages", label: "متون ربات", icon: <MessageSquareText size={18} /> },
+  { id: "bot-messages", label: "متون ربات", icon: <MessageCircle size={18} /> },
+  { id: "special-messages", label: "پیام‌های ویژه", icon: <Star size={18} /> },
   { id: "settings", label: "تنظیمات", icon: <Settings size={18} /> },
 ];
 
@@ -35,18 +31,13 @@ export default function App() {
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":
-        return <DashboardPage />;
-      case "links":
-        return <LinksPage />;
-      case "users":
-        return <UsersPage />;
-      case "messages":
-        return <MessagesPage />;
-      case "bot-messages":
-        return <BotMessagesPage />;
-      case "settings":
-        return <SettingsPage />;
+      case "dashboard": return <DashboardPage />;
+      case "links": return <LinksPage />;
+      case "users": return <UsersPage />;
+      case "messages": return <MessagesPage />;
+      case "bot-messages": return <BotMessagesPage />;
+      case "special-messages": return <SpecialMessagesPage />;
+      case "settings": return <SettingsPage />;
     }
   };
 
@@ -56,23 +47,19 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex" dir="rtl">
+    <div className="flex h-screen bg-slate-50 font-sans" dir="rtl">
       <Toaster
         position="top-center"
         toastOptions={{
-          style: {
-            direction: "rtl",
-            fontFamily: "inherit",
-            borderRadius: "12px",
-            fontSize: "14px",
-          },
+          style: { fontFamily: "inherit", direction: "rtl", textAlign: "right" },
+          duration: 3000,
         }}
       />
 
-      {/* Mobile overlay */}
+      {/* Mobile Overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -80,81 +67,89 @@ export default function App() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 right-0 h-full w-64 z-40 bg-white border-l border-slate-200 shadow-xl
+          fixed top-0 right-0 h-full w-64 bg-white border-l border-slate-100 shadow-xl z-40
           flex flex-col transition-transform duration-300
-          lg:relative lg:translate-x-0 lg:shadow-none
-          ${sidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
+          ${sidebarOpen ? "translate-x-0" : "translate-x-full"}
+          lg:translate-x-0 lg:static lg:shadow-none
         `}
       >
         {/* Logo */}
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
             <Bot size={18} className="text-white" />
           </div>
           <div>
-            <p className="font-bold text-slate-800 text-sm leading-tight">مدیریت ربات بله</p>
-            <p className="text-xs text-slate-400">Bale Bot Manager</p>
+            <div className="font-bold text-slate-800 text-sm leading-tight">مدیریت ربات بله</div>
+            <div className="text-slate-400 text-xs">Bale Bot Manager</div>
           </div>
+          {/* Close button (mobile) */}
           <button
-            className="mr-auto p-1 rounded-lg hover:bg-slate-100 lg:hidden"
+            className="lg:hidden mr-auto p-1 hover:bg-slate-100 rounded-lg transition"
             onClick={() => setSidebarOpen(false)}
           >
-            <X size={18} className="text-slate-400" />
+            <X size={18} className="text-slate-500" />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => navigate(item.id)}
-              className={`
-                w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
-                ${page === item.id
-                  ? "bg-blue-50 text-blue-700 shadow-sm"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
-                }
-              `}
-            >
-              <span className={page === item.id ? "text-blue-600" : "text-slate-400"}>
-                {item.icon}
-              </span>
-              {item.label}
-            </button>
-          ))}
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-4 px-3">
+          <div className="space-y-1">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.id)}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                  ${page === item.id
+                    ? "bg-blue-50 text-blue-600"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                  }
+                `}
+              >
+                <span className={page === item.id ? "text-blue-500" : "text-slate-400"}>
+                  {item.icon}
+                </span>
+                {item.label}
+                {item.id === "special-messages" && (
+                  <span className="mr-auto text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-md">ویژه</span>
+                )}
+              </button>
+            ))}
+          </div>
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100">
-          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-600 text-center">
-            <p className="font-medium">ربات بله</p>
-            <p className="text-blue-400 mt-0.5">Powered by Bale API</p>
+        <div className="px-5 py-4 border-t border-slate-100">
+          <div className="text-xs text-slate-400 text-center">
+            نسخه ۲.۰ · ساخته با ❤️
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 lg:mr-0">
-        {/* Top Bar (mobile) */}
-        <header className="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-20">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top Bar (Mobile) */}
+        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 shadow-sm">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-slate-100 transition"
+            className="p-2 hover:bg-slate-100 rounded-xl transition"
           >
             <Menu size={20} className="text-slate-600" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
-            <span className="font-semibold text-slate-800 text-sm">مدیریت ربات بله</span>
+            <span className="font-bold text-slate-800 text-sm">مدیریت ربات بله</span>
           </div>
+          <div className="w-8" />
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-8 max-w-5xl w-full mx-auto">
-          {renderPage()}
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            {renderPage()}
+          </div>
         </main>
       </div>
     </div>

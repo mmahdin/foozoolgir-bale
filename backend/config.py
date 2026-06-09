@@ -15,6 +15,8 @@ USERS_DIR = os.path.join(DATA_DIR, "users")
 MESSAGES_DIR = os.path.join(DATA_DIR, "messages")
 LINKS_FILE = os.path.join(DATA_DIR, "links.json")
 PROFILE_PHOTOS_DIR = os.path.join(DATA_DIR, "profile_photos")
+LINK_MAP_FILE = os.path.join(DATA_DIR, "link_map.json")        # map: token -> user_id
+SENT_MESSAGES_FILE = os.path.join(DATA_DIR, "sent_messages.json")  # پیام‌های ارسالی از پنل
 
 # ساخت پوشه‌ها در صورت نبودن
 for directory in [DATA_DIR, USERS_DIR, MESSAGES_DIR, PROFILE_PHOTOS_DIR]:

@@ -35,6 +35,14 @@ async def send_message(chat_id: int, text: str, reply_markup: dict = None) -> di
     return await api_call("sendMessage", data)
 
 
+async def delete_message(chat_id: int, message_id: int) -> dict:
+    """حذف پیام"""
+    return await api_call("deleteMessage", {
+        "chat_id": chat_id,
+        "message_id": message_id
+    })
+
+
 async def get_user_profile_photos(user_id: int, limit: int = 1) -> dict:
     """دریافت عکس‌های پروفایل کاربر"""
     return await api_call("getUserProfilePhotos", {"user_id": user_id, "limit": limit})
@@ -51,52 +59,46 @@ async def download_profile_photo(user_id: int) -> Optional[str]:
     برمی‌گرداند: مسیر فایل ذخیره‌شده یا None
     """
     try:
-        # دریافت لیست عکس‌های پروفایل
         photos_resp = await get_user_profile_photos(user_id, limit=1)
-        
+
         if not photos_resp.get("ok"):
             return None
-        
+
         photos = photos_resp.get("result", {})
         total = photos.get("total_count", 0)
-        
+
         if total == 0:
             return None
-        
-        # انتخاب بزرگ‌ترین سایز
+
         photo_sizes = photos.get("photos", [[]])[0]
         if not photo_sizes:
             return None
-        
-        # بزرگ‌ترین سایز (آخرین آیتم)
+
         largest = photo_sizes[-1]
         file_id = largest["file_id"]
-        
-        # دریافت مسیر فایل
+
         file_resp = await get_file(file_id)
         if not file_resp.get("ok"):
             return None
-        
+
         file_path = file_resp["result"].get("file_path")
         if not file_path:
             return None
-        
-        # دانلود فایل
+
         download_url = f"{BALE_FILE_URL}/{file_path}"
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(download_url)
             if resp.status_code != 200:
                 return None
-            
-            # تعیین پسوند
+
             ext = os.path.splitext(file_path)[-1] or ".jpg"
             save_path = os.path.join(PROFILE_PHOTOS_DIR, f"{user_id}{ext}")
-            
+
             with open(save_path, "wb") as f:
                 f.write(resp.content)
-            
+
             return save_path
-    
+
     except Exception as e:
         print(f"[ERROR] download_profile_photo({user_id}): {e}")
         return None

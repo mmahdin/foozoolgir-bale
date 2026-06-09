@@ -1,7 +1,30 @@
 import { useEffect, useState } from "react";
-import { MessageSquare, RefreshCw, Search } from "lucide-react";
-import { fetchUsers, fetchUserMessages, BaleUser, BaleMessage } from "../api";
-import Avatar from "../components/Avatar";
+import { Search, MessageSquare, RefreshCw, Filter } from "lucide-react";
+import { fetchAllMessages, BaleMessage, BaleUser } from "../api";
+
+const typeLabel: Record<string, string> = {
+  text: "متن",
+  photo: "عکس",
+  video: "ویدیو",
+  audio: "صدا",
+  voice: "پیام صوتی",
+  document: "فایل",
+  sticker: "استیکر",
+  contact: "مخاطب",
+  location: "موقعیت",
+  other: "سایر",
+};
+
+const typeColor: Record<string, string> = {
+  text: "bg-blue-100 text-blue-700",
+  photo: "bg-emerald-100 text-emerald-700",
+  video: "bg-purple-100 text-purple-700",
+  audio: "bg-yellow-100 text-yellow-700",
+  voice: "bg-orange-100 text-orange-700",
+  document: "bg-slate-100 text-slate-600",
+  sticker: "bg-pink-100 text-pink-700",
+  other: "bg-gray-100 text-gray-600",
+};
 
 interface MessageWithUser extends BaleMessage {
   user?: BaleUser;
@@ -12,33 +35,14 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all");
 
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      const users = await fetchUsers();
-      const allMessages: MessageWithUser[] = [];
-
-      await Promise.all(
-        users.map(async (user) => {
-          try {
-            const data = await fetchUserMessages(user.id);
-            const msgs = (data.messages as BaleMessage[]).map((m) => ({
-              ...m,
-              user_id: user.id,
-              user,
-            }));
-            allMessages.push(...msgs);
-          } catch {
-            // ignore
-          }
-        })
-      );
-
-      // Sort by date descending
-      allMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setMessages(allMessages);
+      const data = await fetchAllMessages();
+      setMessages(data.messages);
     } catch {
       setError("خطا در اتصال به سرور");
     } finally {
@@ -46,55 +50,33 @@ export default function MessagesPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  const filtered = messages.filter((m) => {
-    const q = search.toLowerCase();
-    return (
-      m.text?.toLowerCase().includes(q) ||
-      m.user?.first_name?.toLowerCase().includes(q) ||
-      m.user?.username?.toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => { load(); }, []);
 
   const formatDate = (iso: string) => {
     try {
-      return new Date(iso).toLocaleDateString("fa-IR", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+      return new Date(iso).toLocaleString("fa-IR", {
+        year: "numeric", month: "short", day: "numeric",
+        hour: "2-digit", minute: "2-digit",
       });
-    } catch {
-      return iso;
-    }
+    } catch { return iso; }
   };
 
-  const typeLabel: Record<string, string> = {
-    text: "متن",
-    photo: "عکس",
-    video: "ویدیو",
-    audio: "صدا",
-    voice: "پیام صوتی",
-    document: "فایل",
-    sticker: "استیکر",
-    contact: "مخاطب",
-    location: "موقعیت",
-    other: "سایر",
+  const displayName = (user?: BaleUser) => {
+    if (!user) return "ناشناس";
+    return [user.first_name, user.last_name].filter(Boolean).join(" ") || `کاربر ${user.id}`;
   };
 
-  const typeColor: Record<string, string> = {
-    text: "bg-blue-100 text-blue-700",
-    photo: "bg-emerald-100 text-emerald-700",
-    video: "bg-purple-100 text-purple-700",
-    audio: "bg-yellow-100 text-yellow-700",
-    voice: "bg-orange-100 text-orange-700",
-    document: "bg-slate-100 text-slate-600",
-    sticker: "bg-pink-100 text-pink-700",
-    other: "bg-gray-100 text-gray-600",
-  };
+  const filtered = messages.filter((msg) => {
+    const q = search.toLowerCase();
+    const matchText = msg.text?.toLowerCase().includes(q) ||
+      displayName(msg.user).toLowerCase().includes(q) ||
+      msg.user?.username?.toLowerCase().includes(q) ||
+      String(msg.user_id).includes(q);
+    const matchType = filterType === "all" || msg.type === filterType;
+    return matchText && matchType;
+  });
+
+  const types = Array.from(new Set(messages.map(m => m.type)));
 
   return (
     <div className="space-y-6">
@@ -111,23 +93,35 @@ export default function MessagesPage() {
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-sm shadow-sm"
         >
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          بروزرسانی
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="جستجو در متن پیام‌ها یا نام کاربر..."
-          className="w-full pr-9 pl-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
-        />
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-48">
+          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="جستجو در متن پیام‌ها یا نام کاربر..."
+            className="w-full pr-9 pl-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
+          />
+        </div>
+        <div className="relative">
+          <Filter size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="pr-9 pl-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm appearance-none cursor-pointer"
+          >
+            <option value="all">همه انواع</option>
+            {types.map((t) => (
+              <option key={t} value={t}>{typeLabel[t] || t}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm">
           ⚠️ {error}
@@ -145,48 +139,47 @@ export default function MessagesPage() {
         <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
           <MessageSquare size={40} className="text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 font-medium">
-            {search ? "پیامی با این متن یافت نشد" : "هنوز هیچ پیامی دریافت نشده"}
+            {search || filterType !== "all" ? "پیامی با این مشخصات یافت نشد" : "هنوز هیچ پیامی دریافت نشده"}
           </p>
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map((msg, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex gap-3"
-            >
+            <div key={i} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-start gap-3">
               {msg.user && (
-                <Avatar
-                  userId={msg.user.id}
-                  firstName={msg.user.first_name}
-                  size="sm"
-                />
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                  {displayName(msg.user)[0]}
+                </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
+                <div className="flex items-center flex-wrap gap-2 mb-1">
                   <span className="font-semibold text-slate-800 text-sm">
-                    {msg.user?.first_name} {msg.user?.last_name}
+                    {displayName(msg.user)}
                   </span>
                   {msg.user?.username && (
-                    <span className="text-xs text-blue-400">@{msg.user.username}</span>
+                    <span className="text-blue-500 text-xs">@{msg.user.username}</span>
                   )}
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      typeColor[msg.type] || typeColor.other
-                    }`}
-                  >
+                  <span className={`text-xs px-2 py-0.5 rounded-lg ${typeColor[msg.type] || typeColor.other}`}>
                     {typeLabel[msg.type] || msg.type}
                   </span>
-                  <span className="text-xs text-slate-400 mr-auto">{formatDate(msg.date)}</span>
+                  <span className="text-slate-400 text-xs">{formatDate(msg.date)}</span>
                 </div>
                 {msg.text ? (
-                  <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">
-                    {msg.text}
-                  </p>
+                  <div className="text-slate-700 text-sm break-words">{msg.text}</div>
                 ) : (
-                  <p className="text-sm text-slate-400 italic">
+                  <div className="text-slate-400 text-sm italic">
                     [{typeLabel[msg.type] || "محتوای غیر متنی"}]
-                  </p>
+                  </div>
+                )}
+                {/* Source links */}
+                {msg.user?.source_links && msg.user.source_links.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {msg.user.source_links.map((sl) => (
+                      <span key={sl} className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono">
+                        {sl.length > 14 ? sl.slice(0, 14) + "…" : sl}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

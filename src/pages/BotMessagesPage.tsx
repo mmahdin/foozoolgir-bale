@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
-import { MessageSquareText, Save, RotateCcw, Info } from "lucide-react";
+import { MessageSquare, RefreshCw, Save, RotateCcw, Info } from "lucide-react";
 import toast from "react-hot-toast";
-import {
-  fetchBotMessages,
-  updateBotMessage,
-  resetBotMessage,
-  BotMessage,
-} from "../api";
+import { fetchBotMessages, updateBotMessage, resetBotMessage, BotMessage } from "../api";
 
 export default function BotMessagesPage() {
   const [messages, setMessages] = useState<BotMessage[]>([]);
@@ -20,7 +15,6 @@ export default function BotMessagesPage() {
     try {
       const data = await fetchBotMessages();
       setMessages(data);
-      // مقداردهی اولیه drafts
       const initial: Record<string, string> = {};
       data.forEach((m) => (initial[m.key] = m.text));
       setDrafts(initial);
@@ -31,9 +25,7 @@ export default function BotMessagesPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const handleSave = async (key: string) => {
     const text = drafts[key];
@@ -80,109 +72,105 @@ export default function BotMessagesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-          <MessageSquareText size={22} />
-          متون ربات
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          پیام‌هایی که ربات به کاربران می‌فرستد را ویرایش کنید
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <MessageSquare size={22} className="text-blue-600" />
+            <h1 className="text-2xl font-bold text-slate-800">متون ربات</h1>
+          </div>
+          <p className="text-slate-500 text-sm">
+            پیام‌هایی که ربات به کاربران می‌فرستد را ویرایش کنید
+          </p>
+        </div>
+        <button
+          onClick={load}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-sm shadow-sm"
+        >
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          بارگذاری مجدد
+        </button>
       </div>
 
-      {/* راهنما */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3 text-sm text-blue-700">
-        <Info size={18} className="shrink-0 mt-0.5" />
-        <div>
-          <p className="font-medium mb-1">راهنمای استفاده از متغیرها</p>
-          <p className="text-blue-600 text-xs leading-relaxed">
-            در متن پیام‌ها می‌توانید از متغیرهای داینامیک استفاده کنید.
-            مثلاً <code className="bg-blue-100 px-1 rounded">{"{first_name}"}</code> با نام کاربر جایگزین می‌شود.
-            متغیرهای مجاز هر پیام در زیر آن نوشته شده‌اند.
-          </p>
+      {/* Guide */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+        <Info size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-amber-700">
+          <strong>راهنما:</strong> در متن پیام‌ها می‌توانید از متغیرها استفاده کنید.
+          مثلاً <code className="bg-amber-100 px-1 rounded">{"{first_name}"}</code> با نام کاربر جایگزین می‌شود.
+          متغیرهای مجاز هر پیام در زیر آن نوشته شده‌اند.
         </div>
       </div>
 
-      {/* لیست پیام‌ها */}
       {loading ? (
         <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="bg-white rounded-2xl border border-slate-100 p-6 space-y-3"
-            >
-              <div className="h-5 bg-slate-100 rounded-lg animate-pulse w-1/3" />
-              <div className="h-3 bg-slate-100 rounded animate-pulse w-2/3" />
-              <div className="h-28 bg-slate-100 rounded-xl animate-pulse" />
-            </div>
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-5 h-40 animate-pulse" />
           ))}
         </div>
       ) : (
         <div className="space-y-4">
           {messages.map((msg) => (
-            <div
-              key={msg.key}
-              className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4"
-            >
-              {/* عنوان و توضیح */}
-              <div className="flex items-start justify-between gap-4">
+            <div key={msg.key} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+              {/* Title & Description */}
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-                    {msg.title}
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-slate-800">{msg.title}</h3>
                     {isDirty(msg.key) && (
-                      <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-medium">
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg">
                         ویرایش نشده
                       </span>
                     )}
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">{msg.description}</p>
-                </div>
-                {/* متغیرهای مجاز */}
-                {msg.variables.length > 0 && (
-                  <div className="flex flex-wrap gap-1 shrink-0">
-                    {msg.variables.map((v) => (
-                      <code
-                        key={v}
-                        className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono"
-                      >
-                        {`{${v}}`}
-                      </code>
-                    ))}
                   </div>
-                )}
+                  <p className="text-slate-500 text-xs">{msg.description}</p>
+                  {msg.variables.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {msg.variables.map((v) => (
+                        <code key={v} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">
+                          {`{${v}}`}
+                        </code>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleReset(msg.key)}
+                    disabled={resetting[msg.key]}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+                  >
+                    <RotateCcw size={12} className={resetting[msg.key] ? "animate-spin" : ""} />
+                    پیش‌فرض
+                  </button>
+                  <button
+                    onClick={() => handleSave(msg.key)}
+                    disabled={saving[msg.key] || !isDirty(msg.key)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    <Save size={12} />
+                    {saving[msg.key] ? "ذخیره..." : "ذخیره"}
+                  </button>
+                </div>
               </div>
 
-              {/* textarea */}
+              {/* Textarea */}
               <textarea
-                value={drafts[msg.key] ?? msg.text}
+                value={drafts[msg.key] || ""}
                 onChange={(e) =>
                   setDrafts((d) => ({ ...d, [msg.key]: e.target.value }))
                 }
-                rows={5}
-                dir="auto"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-800 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-inherit"
-                placeholder="متن پیام را وارد کنید..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono leading-relaxed"
+                dir="rtl"
               />
 
-              {/* دکمه‌ها */}
-              <div className="flex items-center gap-2 justify-end">
-                <button
-                  onClick={() => handleReset(msg.key)}
-                  disabled={resetting[msg.key]}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl text-slate-500 hover:bg-slate-100 transition disabled:opacity-50"
-                >
-                  <RotateCcw size={14} className={resetting[msg.key] ? "animate-spin" : ""} />
-                  بازگشت به پیش‌فرض
-                </button>
-                <button
-                  onClick={() => handleSave(msg.key)}
-                  disabled={saving[msg.key] || !isDirty(msg.key)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  <Save size={14} />
-                  {saving[msg.key] ? "در حال ذخیره..." : "ذخیره"}
-                </button>
-              </div>
+              {/* Preview */}
+              {drafts[msg.key] && (
+                <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-3 border border-slate-100">
+                  <div className="text-xs text-slate-400 mb-1">پیش‌نمایش:</div>
+                  <div className="text-slate-700 text-sm whitespace-pre-wrap">{drafts[msg.key]}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>

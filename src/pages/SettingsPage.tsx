@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { Settings, Bot, Webhook, RefreshCw } from "lucide-react";
+import { Settings, Globe, Trash2, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
+import { fetchBotInfo, fetchStats, Stats } from "../api";
 import axios from "axios";
-import { fetchBotInfo } from "../api";
+
+const BASE_URL = "http://localhost:8000";
 
 export default function SettingsPage() {
   const [botInfo, setBotInfo] = useState<any>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [settingWebhook, setSettingWebhook] = useState(false);
@@ -14,30 +17,35 @@ export default function SettingsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchBotInfo();
-      setBotInfo(data);
-    } catch {
-      setBotInfo(null);
+      const [info, s] = await Promise.all([fetchBotInfo(), fetchStats()]);
+      setBotInfo(info?.result);
+      setStats(s);
+    } catch (err: any) {
+      if (err?.response?.status !== 400) {
+        // ignore 400 (token not set)
+      }
+      const s = await fetchStats().catch(() => null);
+      if (s) setStats(s);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  const handleSetWebhook = async () => {
-    if (!webhookUrl.trim()) {
-      toast.error("آدرس webhook را وارد کنید");
-      return;
-    }
+  const handleSetWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!webhookUrl.trim()) return;
     setSettingWebhook(true);
     try {
-      await axios.post("http://localhost:8000/api/bot/set-webhook", {
-        webhook_url: webhookUrl.trim(),
+      const res = await axios.post(`${BASE_URL}/api/bot/set-webhook`, {
+        webhook_url: webhookUrl.trim()
       });
-      toast.success("Webhook با موفقیت تنظیم شد");
+      if (res.data?.ok || res.data?.result) {
+        toast.success("Webhook با موفقیت تنظیم شد ✅");
+      } else {
+        toast.error(`خطا: ${res.data?.description || "نامشخص"}`);
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "خطا در تنظیم webhook");
     } finally {
@@ -46,12 +54,13 @@ export default function SettingsPage() {
   };
 
   const handleDeleteWebhook = async () => {
+    if (!confirm("Webhook حذف می‌شود و ربات به حالت polling برمی‌گردد. مطمئنید؟")) return;
     setDeletingWebhook(true);
     try {
-      await axios.post("http://localhost:8000/api/bot/delete-webhook");
-      toast.success("Webhook حذف شد - Long Polling فعال است");
-    } catch {
-      toast.error("خطا در حذف webhook");
+      await axios.post(`${BASE_URL}/api/bot/delete-webhook`);
+      toast.success("Webhook حذف شد");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "خطا در حذف webhook");
     } finally {
       setDeletingWebhook(false);
     }
@@ -60,125 +69,117 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-          <Settings size={22} />
-          تنظیمات
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">مدیریت ربات و تنظیمات webhook</p>
-      </div>
-
-      {/* Bot Info */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-        <h2 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
-          <Bot size={18} />
-          اطلاعات ربات
-        </h2>
-
-        {loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-            ))}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Settings size={22} className="text-slate-600" />
+            <h1 className="text-2xl font-bold text-slate-800">تنظیمات</h1>
           </div>
-        ) : botInfo?.ok ? (
-          <div className="space-y-3">
-            {[
-              { label: "نام ربات", value: botInfo.result?.first_name },
-              { label: "یوزرنیم", value: `@${botInfo.result?.username}` },
-              { label: "شناسه (ID)", value: botInfo.result?.id },
-              { label: "Can Join Groups", value: botInfo.result?.can_join_groups ? "✅ بله" : "❌ خیر" },
-              { label: "Can Read All Messages", value: botInfo.result?.can_read_all_group_messages ? "✅ بله" : "❌ خیر" },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                <span className="text-sm text-slate-500">{item.label}</span>
-                <span className="text-sm font-medium text-slate-800">{item.value || "—"}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-red-50 rounded-xl p-4 text-red-600 text-sm">
-            ❌ نمی‌توان به API بله متصل شد. مطمئن شوید توکن صحیح است و سرور اجرا است.
-          </div>
-        )}
-
+          <p className="text-slate-500 text-sm">پیکربندی ربات و سرور</p>
+        </div>
         <button
           onClick={load}
-          className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition text-sm"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-sm shadow-sm"
         >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          بروزرسانی
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
-      {/* Webhook Settings */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+      {/* Bot Status */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <h2 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
-          <Webhook size={18} />
-          تنظیمات Webhook
+          {stats?.bot_token_set ? (
+            <CheckCircle size={18} className="text-emerald-500" />
+          ) : (
+            <AlertCircle size={18} className="text-red-500" />
+          )}
+          وضعیت ربات
         </h2>
 
-        <div className="bg-blue-50 rounded-xl p-4 text-blue-700 text-sm mb-4">
-          <p className="font-medium mb-1">📡 حالت فعلی: Long Polling</p>
-          <p className="text-blue-600 text-xs">
-            بدون تنظیم webhook، ربات به‌صورت خودکار با Long Polling آپدیت دریافت می‌کند.
-            اگر سرور عمومی دارید می‌توانید webhook تنظیم کنید.
-          </p>
-        </div>
+        {loading ? (
+          <div className="h-24 animate-pulse bg-slate-50 rounded-xl" />
+        ) : (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-slate-50 rounded-xl p-3 flex justify-between">
+                <span className="text-slate-500">توکن ربات</span>
+                <span className={stats?.bot_token_set ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                  {stats?.bot_token_set ? "✅ تنظیم شده" : "❌ تنظیم نشده"}
+                </span>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 flex justify-between">
+                <span className="text-slate-500">یوزرنیم</span>
+                <span className="text-slate-700 font-mono">@{stats?.bot_username || "—"}</span>
+              </div>
+              {botInfo && (
+                <>
+                  <div className="bg-slate-50 rounded-xl p-3 flex justify-between">
+                    <span className="text-slate-500">نام ربات</span>
+                    <span className="text-slate-700">{botInfo.first_name}</span>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 flex justify-between">
+                    <span className="text-slate-500">آیدی ربات</span>
+                    <span className="text-slate-700 font-mono">{botInfo.id}</span>
+                  </div>
+                </>
+              )}
+            </div>
 
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              آدرس Webhook
-            </label>
-            <input
-              type="url"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://your-server.com/webhook"
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <p className="text-xs text-slate-400 mt-1">
-              فقط درگاه‌های 443 و 88 پشتیبانی می‌شوند
-            </p>
+            {!stats?.bot_token_set && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
+                <strong>⚠️ توکن تنظیم نشده:</strong> فایل <code>.env</code> را در پوشه backend بسازید و
+                <code>BOT_TOKEN</code> و <code>BOT_USERNAME</code> را اضافه کنید.
+              </div>
+            )}
           </div>
+        )}
+      </div>
 
+      {/* Webhook Settings */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+          <Globe size={18} className="text-blue-500" />
+          تنظیم Webhook
+        </h2>
+        <p className="text-slate-400 text-xs mb-4">
+          اگر سرور شما HTTPS دارد می‌توانید webhook را تنظیم کنید. در غیر این صورت ربات از polling استفاده می‌کند.
+        </p>
+        <form onSubmit={handleSetWebhook} className="space-y-3">
+          <input
+            type="url"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="https://your-domain.com/webhook"
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
           <div className="flex gap-2">
             <button
-              onClick={handleSetWebhook}
-              disabled={settingWebhook}
+              type="submit"
+              disabled={settingWebhook || !webhookUrl.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition disabled:opacity-50"
             >
               {settingWebhook ? "در حال تنظیم..." : "تنظیم Webhook"}
             </button>
             <button
+              type="button"
               onClick={handleDeleteWebhook}
               disabled={deletingWebhook}
-              className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm hover:bg-red-100 transition disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm hover:bg-red-100 transition disabled:opacity-50"
             >
+              <Trash2 size={14} />
               {deletingWebhook ? "در حال حذف..." : "حذف Webhook"}
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
-      {/* Data Location */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-        <h2 className="font-semibold text-slate-700 mb-4">📁 محل ذخیره‌سازی داده‌ها</h2>
-        <div className="space-y-2 text-sm">
-          {[
-            { path: "backend/data/links.json", desc: "لینک‌های اختصاصی" },
-            { path: "backend/data/users/", desc: "اطلاعات کاربران (هر کاربر یک فایل)" },
-            { path: "backend/data/messages/", desc: "پیام‌های کاربران" },
-            { path: "backend/data/profile_photos/", desc: "عکس‌های پروفایل دانلودشده" },
-          ].map((item) => (
-            <div key={item.path} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
-              <code className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs font-mono flex-shrink-0">
-                {item.path}
-              </code>
-              <span className="text-slate-500">{item.desc}</span>
-            </div>
-          ))}
+      {/* .env guide */}
+      <div className="bg-slate-800 rounded-2xl p-5 text-sm font-mono text-slate-200">
+        <div className="text-slate-400 text-xs mb-3">📄 backend/.env</div>
+        <div className="space-y-1">
+          <div><span className="text-emerald-400">BOT_TOKEN</span>=<span className="text-amber-300">توکن_ربات_شما</span></div>
+          <div><span className="text-emerald-400">BOT_USERNAME</span>=<span className="text-amber-300">یوزرنیم_ربات</span></div>
+          <div><span className="text-emerald-400">PORT</span>=<span className="text-amber-300">8000</span></div>
         </div>
       </div>
     </div>

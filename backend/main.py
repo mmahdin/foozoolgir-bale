@@ -26,22 +26,20 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
-#  Lifespan - شروع و پایان برنامه
+#  Lifespan
 # ─────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # اجرای long polling در پس‌زمینه
     if BOT_TOKEN:
         logger.info("[App] Starting bot polling...")
         poll_task = asyncio.create_task(polling.start_polling())
     else:
         logger.warning("[App] BOT_TOKEN not set! Polling disabled.")
         poll_task = None
-    
+
     yield
-    
-    # پایان polling
+
     if poll_task:
         polling.stop_polling()
         poll_task.cancel()
@@ -58,11 +56,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bale Bot Manager",
     description="مدیریت ربات بله با لینک‌های اختصاصی",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
-# CORS برای فرانت‌اند
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -73,12 +70,11 @@ app.add_middleware(
 
 
 # ─────────────────────────────────────────────
-#  Webhook (اختیاری)
+#  Webhook
 # ─────────────────────────────────────────────
 
 @app.post("/webhook")
 async def webhook_endpoint(request: Request):
-    """دریافت آپدیت از طریق webhook"""
     try:
         update = await request.json()
         asyncio.create_task(bot_handler.handle_update(update))
@@ -101,51 +97,61 @@ class SetWebhookRequest(BaseModel):
     webhook_url: str
 
 
+class SendMessageRequest(BaseModel):
+    text: str
+
+
+class UpdateBotMessageRequest(BaseModel):
+    text: str
+
+
+class SetSpecialMessageRequest(BaseModel):
+    identifier: str   # user_id یا username
+    key: str          # کلید پیام (مثل welcome_with_link)
+    text: str
+
+
 # ─────────────────────────────────────────────
 #  API - مدیریت لینک‌ها
 # ─────────────────────────────────────────────
 
 @app.get("/api/links")
 def get_links():
-    """دریافت تمام لینک‌های اختصاصی"""
     links = storage.load_links()
     result = []
+    link_map = storage.load_link_map()
+    # ساخت map معکوس: user_id -> token
+    user_token_map = {str(uid): token for token, uid in link_map.items()}
+
     for name, info in links.items():
         deep_link = f"https://ble.ir/{BOT_USERNAME}?start={name}" if BOT_USERNAME else f"ble.ir/BOT_USERNAME?start={name}"
-        result.append({
-            **info,
-            "deep_link": deep_link
-        })
+        result.append({**info, "deep_link": deep_link})
     return {"links": result}
 
 
 @app.post("/api/links")
 def create_link(req: CreateLinkRequest):
-    """ساخت لینک اختصاصی جدید"""
-    # اعتبارسنجی نام لینک
     name = req.name.strip().lower()
     if not name:
         raise HTTPException(status_code=400, detail="نام لینک نمی‌تواند خالی باشد")
-    
-    # فقط حروف، اعداد و خط تیره مجاز است
+
     import re
     if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
         raise HTTPException(
             status_code=400,
             detail="نام لینک فقط می‌تواند شامل حروف انگلیسی، اعداد، خط تیره و زیرخط باشد"
         )
-    
+
     result = storage.create_link(name, req.label)
     if "error" in result:
         raise HTTPException(status_code=409, detail=result["error"])
-    
+
     deep_link = f"https://ble.ir/{BOT_USERNAME}?start={name}" if BOT_USERNAME else f"ble.ir/BOT_USERNAME?start={name}"
     return {**result, "deep_link": deep_link}
 
 
 @app.delete("/api/links/{name}")
 def delete_link(name: str):
-    """حذف لینک اختصاصی"""
     success = storage.delete_link(name)
     if not success:
         raise HTTPException(status_code=404, detail="لینک یافت نشد")
@@ -154,22 +160,65 @@ def delete_link(name: str):
 
 @app.get("/api/links/{name}/visitors")
 def get_link_visitors(name: str):
-    """دریافت بازدیدکنندگان یک لینک خاص"""
     links = storage.load_links()
     if name not in links:
         raise HTTPException(status_code=404, detail="لینک یافت نشد")
-    
+
     link_info = links[name]
     visitor_ids = link_info.get("visitors", [])
-    
+
     visitors = []
     for uid in visitor_ids:
         user = storage.load_user(uid)
         if user:
             visitors.append(user)
-    
+
     return {
         "link": {**link_info, "deep_link": f"https://ble.ir/{BOT_USERNAME}?start={name}"},
+        "visitors": visitors,
+        "total": len(visitors)
+    }
+
+
+# ─────────────────────────────────────────────
+#  API - لینک‌های شخصی (Personal Links)
+# ─────────────────────────────────────────────
+
+@app.get("/api/personal-links")
+def get_personal_links():
+    """دریافت لیست تمام لینک‌های شخصی کاربران"""
+    link_map = storage.load_link_map()
+    result = []
+    for token, user_id_str in link_map.items():
+        user_id = int(user_id_str)
+        user = storage.load_user(user_id)
+        deep_link = f"https://ble.ir/{BOT_USERNAME}?start={token}" if BOT_USERNAME else f"ble.ir/BOT_USERNAME?start={token}"
+        result.append({
+            "token": token,
+            "user_id": user_id,
+            "user": user,
+            "deep_link": deep_link
+        })
+    return {"personal_links": result, "total": len(result)}
+
+
+@app.get("/api/personal-links/{token}/visitors")
+def get_personal_link_visitors(token: str):
+    """دریافت بازدیدکنندگان یک لینک شخصی"""
+    owner_id = storage.get_user_id_by_token(token)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="توکن یافت نشد")
+
+    owner = storage.load_user(owner_id)
+    # کاربرانی که این توکن را در source_links دارند
+    all_users = storage.load_all_users()
+    visitors = [u for u in all_users if token in u.get("source_links", []) and u["id"] != owner_id]
+
+    deep_link = f"https://ble.ir/{BOT_USERNAME}?start={token}" if BOT_USERNAME else f"ble.ir/BOT_USERNAME?start={token}"
+    return {
+        "token": token,
+        "owner": owner,
+        "deep_link": deep_link,
         "visitors": visitors,
         "total": len(visitors)
     }
@@ -181,14 +230,12 @@ def get_link_visitors(name: str):
 
 @app.get("/api/users")
 def get_users():
-    """دریافت لیست تمام کاربران"""
     users = storage.load_all_users()
     return {"users": users, "total": len(users)}
 
 
 @app.get("/api/users/{user_id}")
 def get_user(user_id: int):
-    """دریافت اطلاعات یک کاربر"""
     user = storage.load_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
@@ -197,7 +244,6 @@ def get_user(user_id: int):
 
 @app.get("/api/users/{user_id}/messages")
 def get_user_messages(user_id: int):
-    """دریافت پیام‌های یک کاربر"""
     user = storage.load_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
@@ -211,25 +257,83 @@ def get_user_messages(user_id: int):
 
 @app.get("/api/users/{user_id}/photo")
 def get_user_photo(user_id: int):
-    """دریافت عکس پروفایل کاربر"""
     user = storage.load_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
-    
+
     photo_path = user.get("profile_photo_path", "")
     if not photo_path or not os.path.exists(photo_path):
         raise HTTPException(status_code=404, detail="عکس پروفایل یافت نشد")
-    
+
     return FileResponse(photo_path)
 
 
 # ─────────────────────────────────────────────
-#  API - پیام‌ها
+#  API - ارسال پیام به کاربران از پنل
+# ─────────────────────────────────────────────
+
+@app.post("/api/users/{user_id}/send-message")
+async def send_message_to_user(user_id: int, req: SendMessageRequest):
+    """ارسال پیام به یک کاربر خاص از پنل"""
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=400, detail="BOT_TOKEN تنظیم نشده")
+
+    user = storage.load_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+
+    result = await bale_api.send_message(user_id, req.text)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=f"خطا در ارسال پیام: {result.get('description', '')}")
+
+    message_id = result.get("result", {}).get("message_id")
+    entry = storage.save_sent_message(user_id, message_id, req.text)
+    return {"ok": True, "sent_message": entry}
+
+
+@app.get("/api/users/{user_id}/sent-messages")
+def get_sent_messages_for_user(user_id: int):
+    """دریافت پیام‌های ارسالی از پنل به یک کاربر"""
+    msgs = storage.load_sent_messages()
+    user_msgs = [m for m in msgs if m["user_id"] == user_id]
+    return {"sent_messages": user_msgs, "total": len(user_msgs)}
+
+
+@app.delete("/api/sent-messages/{entry_id}")
+async def delete_sent_message(entry_id: str):
+    """حذف پیام ارسالی از پنل (هم از چت، هم از سیستم)"""
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=400, detail="BOT_TOKEN تنظیم نشده")
+
+    entry = storage.get_sent_message(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="پیام یافت نشد")
+
+    if entry.get("deleted"):
+        raise HTTPException(status_code=400, detail="پیام قبلاً حذف شده")
+
+    # حذف از بله
+    result = await bale_api.delete_message(entry["user_id"], entry["message_id"])
+    if not result.get("ok"):
+        logger.warning(f"[API] Could not delete from Bale: {result.get('description')}")
+
+    storage.mark_sent_message_deleted(entry_id)
+    return {"ok": True, "message": "پیام حذف شد"}
+
+
+@app.get("/api/sent-messages")
+def get_all_sent_messages():
+    """دریافت تمام پیام‌های ارسالی از پنل"""
+    msgs = storage.load_sent_messages()
+    return {"sent_messages": msgs, "total": len(msgs)}
+
+
+# ─────────────────────────────────────────────
+#  API - پیام‌ها (دریافتی از کاربران)
 # ─────────────────────────────────────────────
 
 @app.get("/api/messages")
 def get_all_messages():
-    """دریافت تمام پیام‌ها"""
     messages = storage.load_all_messages()
     return {"messages": messages, "total": len(messages)}
 
@@ -240,18 +344,32 @@ def get_all_messages():
 
 @app.get("/api/stats")
 def get_stats():
-    """دریافت آمار کلی ربات"""
     users = storage.load_all_users()
     links = storage.load_links()
     messages = storage.load_all_messages()
-    
+    link_map = storage.load_link_map()
+    sent_msgs = storage.load_sent_messages()
+
     total_clicks = sum(v.get("click_count", 0) for v in links.values())
-    
+
+    # بازدیدکنندگان لینک‌های شخصی
+    personal_visitors = 0
+    all_users = storage.load_all_users()
+    for u in all_users:
+        for sl in u.get("source_links", []):
+            owner_id = storage.get_user_id_by_token(sl)
+            if owner_id is not None and owner_id != u["id"]:
+                personal_visitors += 1
+                break
+
     return {
         "total_users": len(users),
         "total_links": len(links),
         "total_messages": len(messages),
         "total_clicks": total_clicks,
+        "total_personal_links": len(link_map),
+        "total_personal_visitors": personal_visitors,
+        "total_sent_messages": len(sent_msgs),
         "bot_username": BOT_USERNAME,
         "bot_token_set": bool(BOT_TOKEN)
     }
@@ -263,7 +381,6 @@ def get_stats():
 
 @app.get("/api/bot/info")
 async def get_bot_info():
-    """دریافت اطلاعات ربات از API بله"""
     if not BOT_TOKEN:
         raise HTTPException(status_code=400, detail="BOT_TOKEN تنظیم نشده")
     result = await bale_api.get_me()
@@ -272,7 +389,6 @@ async def get_bot_info():
 
 @app.post("/api/bot/set-webhook")
 async def set_webhook(req: SetWebhookRequest):
-    """تنظیم webhook برای ربات"""
     if not BOT_TOKEN:
         raise HTTPException(status_code=400, detail="BOT_TOKEN تنظیم نشده")
     result = await bale_api.set_webhook(req.webhook_url)
@@ -281,7 +397,6 @@ async def set_webhook(req: SetWebhookRequest):
 
 @app.post("/api/bot/delete-webhook")
 async def delete_webhook():
-    """حذف webhook"""
     if not BOT_TOKEN:
         raise HTTPException(status_code=400, detail="BOT_TOKEN تنظیم نشده")
     result = await bale_api.delete_webhook()
@@ -289,46 +404,104 @@ async def delete_webhook():
 
 
 # ─────────────────────────────────────────────
-#  نقطه ورود
-# ─────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import uvicorn
-    from config import PORT
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
-
-
-# ─────────────────────────────────────────────
 #  API - متون ربات
 # ─────────────────────────────────────────────
 
-class UpdateBotMessageRequest(BaseModel):
-    text: str
-
-
 @app.get("/api/bot-messages")
 def get_bot_messages():
-    """دریافت تمام متون ربات"""
-    messages = storage.load_bot_messages()
-    return {"messages": list(messages.values())}
+    data = storage.load_bot_messages()
+    return {"messages": list(data.values())}
 
 
 @app.put("/api/bot-messages/{key}")
-def update_bot_message_endpoint(key: str, req: UpdateBotMessageRequest):
-    """بروزرسانی متن یک پیام"""
-    if not req.text.strip():
-        raise HTTPException(status_code=400, detail="متن پیام نمی‌تواند خالی باشد")
+def update_bot_message(key: str, req: UpdateBotMessageRequest):
     success = storage.update_bot_message(key, req.text)
     if not success:
-        raise HTTPException(status_code=404, detail="پیام یافت نشد")
-    return {"ok": True, "message": "متن پیام با موفقیت بروز شد"}
+        raise HTTPException(status_code=404, detail="کلید پیام یافت نشد")
+    return {"ok": True}
 
 
 @app.post("/api/bot-messages/{key}/reset")
-def reset_bot_message_endpoint(key: str):
-    """بازگشت متن پیام به حالت پیش‌فرض"""
-    success = storage.reset_bot_message(key)
-    if not success:
-        raise HTTPException(status_code=404, detail="پیام یافت نشد")
-    messages = storage.load_bot_messages()
-    return {"ok": True, "message": messages[key]}
+def reset_bot_message(key: str):
+    result = storage.reset_bot_message(key)
+    if not result:
+        raise HTTPException(status_code=404, detail="کلید پیام یافت نشد")
+    return {"ok": True, "message": result}
+
+
+# ─────────────────────────────────────────────
+#  API - پیام‌های ویژه (Special Messages)
+# ─────────────────────────────────────────────
+
+@app.get("/api/special-messages")
+def get_special_messages():
+    """دریافت تمام پیام‌های سفارشی کاربران ویژه"""
+    data = storage.load_special_messages()
+    result = []
+    for identifier, messages in data.items():
+        # تلاش برای پیدا کردن اطلاعات کاربر
+        user = None
+        try:
+            uid = int(identifier)
+            user = storage.load_user(uid)
+        except ValueError:
+            # username است
+            all_users = storage.load_all_users()
+            user = next((u for u in all_users if u.get("username") == identifier), None)
+        result.append({
+            "identifier": identifier,
+            "user": user,
+            "messages": messages
+        })
+    return {"special_messages": result}
+
+
+@app.post("/api/special-messages")
+def set_special_message(req: SetSpecialMessageRequest):
+    """تنظیم پیام سفارشی برای یک کاربر خاص"""
+    storage.set_special_message(req.identifier, req.key, req.text)
+    return {"ok": True}
+
+
+@app.delete("/api/special-messages/{identifier}/{key}")
+def delete_special_message(identifier: str, key: str):
+    """حذف پیام سفارشی"""
+    data = storage.load_special_messages()
+    if identifier not in data or key not in data[identifier]:
+        raise HTTPException(status_code=404, detail="پیام سفارشی یافت نشد")
+    del data[identifier][key]
+    if not data[identifier]:
+        del data[identifier]
+    storage._save_json(storage.SPECIAL_MESSAGES_FILE, data)
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+#  API - دسته‌بندی کاربران بر اساس لینک
+# ─────────────────────────────────────────────
+
+@app.get("/api/links/{name}/users")
+def get_link_users(name: str):
+    """دریافت کاربران دسته‌بندی‌شده بر اساس لینک"""
+    links = storage.load_links()
+    if name not in links:
+        raise HTTPException(status_code=404, detail="لینک یافت نشد")
+
+    link_info = links[name]
+    visitor_ids = link_info.get("visitors", [])
+
+    visitors = []
+    for uid in visitor_ids:
+        user = storage.load_user(uid)
+        if user:
+            msgs = storage.load_user_messages(uid)
+            visitors.append({
+                **user,
+                "message_count_for_link": len(msgs)
+            })
+
+    return {
+        "link": {**link_info, "deep_link": f"https://ble.ir/{BOT_USERNAME}?start={name}"},
+        "users": visitors,
+        "total": len(visitors)
+    }

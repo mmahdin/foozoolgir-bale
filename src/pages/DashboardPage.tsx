@@ -1,136 +1,170 @@
 import { useEffect, useState } from "react";
-import { Users, Link2, MessageSquare, MousePointerClick, Bot, RefreshCw } from "lucide-react";
+import {
+  Users, Link2, MessageSquare, MousePointerClick,
+  Activity, Send, UserCheck
+} from "lucide-react";
 import { fetchStats, Stats } from "../api";
-import StatCard from "../components/StatCard";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await fetchStats();
-      setStats(data);
-    } catch {
-      setError("خطا در اتصال به سرور. مطمئن شوید بک‌اند روی پورت 8000 اجرا است.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
+    fetchStats()
+      .then(setStats)
+      .catch(() => setError("خطا در اتصال به سرور"))
+      .finally(() => setLoading(false));
   }, []);
+
+  const cards = stats
+    ? [
+        {
+          label: "تعداد کاربران",
+          value: stats.total_users,
+          icon: <Users size={22} />,
+          color: "bg-blue-50 text-blue-600",
+          border: "border-blue-100",
+        },
+        {
+          label: "لینک‌های اختصاصی",
+          value: stats.total_links,
+          icon: <Link2 size={22} />,
+          color: "bg-violet-50 text-violet-600",
+          border: "border-violet-100",
+        },
+        {
+          label: "لینک‌های شخصی",
+          value: stats.total_personal_links,
+          icon: <UserCheck size={22} />,
+          color: "bg-emerald-50 text-emerald-600",
+          border: "border-emerald-100",
+        },
+        {
+          label: "پیام‌های دریافتی",
+          value: stats.total_messages,
+          icon: <MessageSquare size={22} />,
+          color: "bg-amber-50 text-amber-600",
+          border: "border-amber-100",
+        },
+        {
+          label: "کل کلیک‌ها",
+          value: stats.total_clicks,
+          icon: <MousePointerClick size={22} />,
+          color: "bg-rose-50 text-rose-600",
+          border: "border-rose-100",
+        },
+        {
+          label: "پیام‌های ارسالی از پنل",
+          value: stats.total_sent_messages,
+          icon: <Send size={22} />,
+          color: "bg-sky-50 text-sky-600",
+          border: "border-sky-100",
+        },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">داشبورد</h1>
-          <p className="text-slate-500 text-sm mt-1">آمار کلی ربات بله</p>
-        </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-sm shadow-sm"
-        >
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          بروزرسانی
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">داشبورد</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          {stats
+            ? stats.bot_token_set
+              ? `ربات @${stats.bot_username || "—"} فعال است`
+              : "⚠️ توکن ربات تنظیم نشده"
+            : "در حال بارگذاری..."}
+        </p>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm">
-          ⚠️ {error}
+          ⚠️ {error} — بررسی کنید که سرور بکند روی پورت 8000 اجرا شده باشد.
         </div>
       )}
 
       {/* Stats Grid */}
-      {loading && !stats ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-2xl p-5 h-24 animate-pulse border border-slate-100" />
-          ))}
-        </div>
-      ) : stats ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="کاربران ثبت‌شده"
-            value={stats.total_users}
-            icon={<Users size={22} className="text-white" />}
-            color="bg-violet-500"
-            subtitle="کاربر منحصربه‌فرد"
-          />
-          <StatCard
-            title="لینک‌های اختصاصی"
-            value={stats.total_links}
-            icon={<Link2 size={22} className="text-white" />}
-            color="bg-blue-500"
-            subtitle="لینک ساخته‌شده"
-          />
-          <StatCard
-            title="پیام‌های دریافتی"
-            value={stats.total_messages}
-            icon={<MessageSquare size={22} className="text-white" />}
-            color="bg-emerald-500"
-            subtitle="کل پیام‌ها"
-          />
-          <StatCard
-            title="کل کلیک‌ها"
-            value={stats.total_clicks}
-            icon={<MousePointerClick size={22} className="text-white" />}
-            color="bg-orange-500"
-            subtitle="روی لینک‌های اختصاصی"
-          />
-        </div>
-      ) : null}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {loading
+          ? [1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="bg-white rounded-2xl border border-slate-100 p-5 h-28 animate-pulse"
+              />
+            ))
+          : cards.map((card) => (
+              <div
+                key={card.label}
+                className={`bg-white rounded-2xl border ${card.border} p-5 flex items-center gap-4 shadow-sm`}
+              >
+                <div className={`rounded-xl p-3 ${card.color}`}>
+                  {card.icon}
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {card.value.toLocaleString("fa-IR")}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">{card.label}</div>
+                </div>
+              </div>
+            ))}
+      </div>
 
       {/* Bot Status */}
       {stats && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-          <h2 className="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
-            <Bot size={18} />
-            وضعیت ربات
-          </h2>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2 border-b border-slate-50">
-              <span className="text-sm text-slate-500">یوزرنیم ربات</span>
-              <span className="text-sm font-medium text-slate-800">
-                {stats.bot_username ? `@${stats.bot_username}` : "تنظیم نشده"}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity size={18} className="text-slate-500" />
+            <h2 className="font-semibold text-slate-700">وضعیت ربات</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="flex justify-between bg-slate-50 rounded-xl px-4 py-3">
+              <span className="text-slate-500">یوزرنیم</span>
+              <span className="font-medium text-slate-700 font-mono">
+                @{stats.bot_username || "—"}
               </span>
             </div>
-            <div className="flex items-center justify-between py-2 border-b border-slate-50">
-              <span className="text-sm text-slate-500">توکن ربات</span>
-              <span className={`text-sm font-medium ${stats.bot_token_set ? "text-emerald-600" : "text-red-500"}`}>
+            <div className="flex justify-between bg-slate-50 rounded-xl px-4 py-3">
+              <span className="text-slate-500">توکن</span>
+              <span
+                className={`font-medium ${stats.bot_token_set ? "text-emerald-600" : "text-red-500"}`}
+              >
                 {stats.bot_token_set ? "✅ تنظیم شده" : "❌ تنظیم نشده"}
               </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-slate-500">حالت دریافت آپدیت</span>
-              <span className="text-sm font-medium text-blue-600">Long Polling</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Setup Guide */}
-      {stats && !stats.bot_token_set && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-          <h3 className="font-semibold text-amber-800 mb-3">🚀 راهنمای راه‌اندازی</h3>
-          <ol className="text-sm text-amber-700 space-y-2 list-decimal list-inside">
-            <li>در بله، با <strong>@botfather</strong> صحبت کنید و ربات بسازید</li>
-            <li>توکن دریافتی را در فایل <code className="bg-amber-100 px-1 rounded">backend/.env</code> قرار دهید</li>
-            <li>یوزرنیم ربات را هم در همان فایل وارد کنید</li>
-            <li>سرور را دوباره اجرا کنید: <code className="bg-amber-100 px-1 rounded">python main.py</code></li>
-          </ol>
+      {/* Quick Guide */}
+      <div className="bg-gradient-to-br from-blue-50 to-violet-50 border border-blue-100 rounded-2xl p-5">
+        <h3 className="font-semibold text-slate-700 mb-3">🚀 راهنمای سریع</h3>
+        <div className="space-y-2 text-sm text-slate-600">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-500 font-bold mt-0.5">1.</span>
+            <span>
+              کاربر دستور <code className="bg-white px-1 py-0.5 rounded text-blue-700">/getlink</code> را به ربات می‌فرستد تا لینک اختصاصی خود را دریافت کند
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-500 font-bold mt-0.5">2.</span>
+            <span>ربات یک لینک منحصربه‌فرد (با UUID) می‌سازد که قابل حدس نیست</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-500 font-bold mt-0.5">3.</span>
+            <span>کاربر لینک را در بایو خود قرار می‌دهد</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-500 font-bold mt-0.5">4.</span>
+            <span>وقتی شخص دیگری کلیک کند: به بازدیدکننده پیام می‌رود و صاحب لینک هم اطلاع می‌گیرد</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-500 font-bold mt-0.5">5.</span>
+            <span>از بخش کاربران می‌توانید به هر کاربر پیام بفرستید یا پیام‌های ارسالی را حذف کنید</span>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
