@@ -42,6 +42,8 @@ export interface BaleMessage {
   type: string;
   user_id?: number;
   user?: BaleUser;
+  media_type?: "photo" | "video" | null;
+  media_local_path?: string | null;
 }
 
 export interface SentMessage {
@@ -52,6 +54,8 @@ export interface SentMessage {
   sent_at: string;
   deleted: boolean;
   source?: "panel" | "bot"; // ✨ NEW: distinguish panel-sent vs bot-sent messages
+  media_type?: "photo" | "video" | null;
+  media_local_path?: string | null;
 }
 
 export interface Stats {
@@ -130,12 +134,35 @@ export const sendMessageToUser = async (userId: number, text: string): Promise<S
   return res.data.sent_message;
 };
 
+export const sendPhotoToUser = async (userId: number, file: File, caption?: string): Promise<SentMessage> => {
+  const form = new FormData();
+  form.append("file", file);
+  if (caption) form.append("caption", caption);
+  const res = await api.post(`/api/users/${userId}/send-photo`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data.sent_message;
+};
+
+export const sendVideoToUser = async (userId: number, file: File, caption?: string): Promise<SentMessage> => {
+  const form = new FormData();
+  form.append("file", file);
+  if (caption) form.append("caption", caption);
+  const res = await api.post(`/api/users/${userId}/send-video`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data.sent_message;
+};
+
 export const deleteSentMessage = async (entryId: string): Promise<void> => {
   await api.delete(`/api/sent-messages/${entryId}`);
 };
 
 export const getUserPhotoUrl = (userId: number) =>
   `${BASE_URL}/api/users/${userId}/photo`;
+
+export const getMessageMediaUrl = (userId: number, messageId: number) =>
+  `${BASE_URL}/api/users/${userId}/messages/${messageId}/media`;
 
 // ─────────────────────────────────────────────────────────
 // Stats API

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquare, RefreshCw, User } from "lucide-react";
+import { MessageSquare, RefreshCw, User, Image, Video } from "lucide-react";
 import { fetchUsers, fetchUserMessages, BaleUser, BaleMessage, getUserPhotoUrl } from "../api";
 
 export default function MessagesPage() {
@@ -113,8 +113,20 @@ export default function MessagesPage() {
                   </span>
                   <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(msg.date)}</span>
                 </div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  {msg.media_type === "photo" && (
+                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                      <Image size={12} /> عکس
+                    </span>
+                  )}
+                  {msg.media_type === "video" && (
+                    <span className="inline-flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                      <Video size={12} /> ویدئو
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-3">
-                  {msg.text || "—"}
+                  {msg.text || (msg.media_type ? `[${msg.media_type === "photo" ? "عکس" : "ویدئو"}]` : "—")}
                 </p>
               </div>
             </div>

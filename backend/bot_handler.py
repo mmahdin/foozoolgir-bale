@@ -1,6 +1,7 @@
 """
 ماژول پردازش پیام‌های ربات
 ✨ CHANGE: بعد از هر send_message، پیام در sent_messages ذخیره می‌شود با source="bot"
+✨ CHANGE: دانلود عکس پروفایل و رسانه‌های دریافتی
 """
 import asyncio
 import logging
@@ -8,12 +9,12 @@ from typing import Optional
 
 import bale_api
 import storage
-from config import BOT_USERNAME
+from config import BOT_USERNAME, MEDIA_DIR
 
 logger = logging.getLogger(__name__)
 
 
-async def _send_and_store(chat_id: int, text: str, source: str = "bot") -> dict:
+async def _send_and_store(chat_id: int, text: str, source: str = "bot", media_type: str = None, media_local_path: str = None) -> dict:
     """
     ✨ NEW: ارسال پیام و ذخیره آن در sent_messages
     این تابع هر پیامی که ربات می‌فرسته رو در دیتابیس ذخیره می‌کنه
@@ -21,7 +22,7 @@ async def _send_and_store(chat_id: int, text: str, source: str = "bot") -> dict:
     """
     result = await bale_api.send_message(chat_id, text)
     message_id = result.get("message_id", 0) if isinstance(result, dict) else 0
-    storage.add_sent_message(chat_id, message_id, text, source=source)
+    storage.add_sent_message(chat_id, message_id, text, source=source, media_type=media_type, media_local_path=media_local_path)
     return result
 
 
@@ -41,9 +42,14 @@ async def handle_message(message: dict) -> None:
     user_id = from_user["id"]
     text = message.get("text", "")
 
-    if text.startswith("/start"):
+    # تشخیص پیام‌های رسانه‌ای (عکس، ویدئو) و متنی
+    has_photo = bool(message.get("photo"))
+    has_video = bool(message.get("video"))
+    is_command = text.startswith("/")
+
+    if is_command and text.startswith("/start"):
         await handle_start(message, from_user, text)
-    elif text.strip() == "/getlink":
+    elif is_command and text.strip() == "/getlink":
         await handle_getlink(message, from_user)
     else:
         await handle_regular_message(message, from_user)
@@ -141,8 +147,10 @@ async def handle_start(message: dict, from_user: dict, text: str) -> None:
         # ✨ CHANGE: ذخیره پیام خوش‌آمدگویی ارسال شده توسط ربات
         await _send_and_store(user_id, welcome_text)
 
-    # ذخیره پیام /start در لیست پیام‌های کاربر
+    # ذخیره پیام /start در لیست پیام‌های کاربر (شامل رسانه اگر وجود داشته باشد)
     storage.save_message(user_id, message)
+    if message.get("photo") or message.get("video"):
+        asyncio.create_task(_download_media_from_message(user_id, message))
 
     logger.info(f"[BOT] /start | user={user_id} | token={source_token or '(direct)'}")
 
@@ -183,19 +191,30 @@ async def handle_getlink(message: dict, from_user: dict) -> None:
 
     # ذخیره پیام
     storage.save_message(user_id, message)
+    if message.get("photo") or message.get("video"):
+        asyncio.create_task(_download_media_from_message(user_id, message))
 
     logger.info(f"[BOT] /getlink | user={user_id} | token={token}")
 
 
 async def handle_regular_message(message: dict, from_user: dict) -> None:
-    """پردازش پیام‌های عادی"""
+    """پردازش پیام‌های عادی (متن، عکس، ویدئو)"""
     user_id = from_user["id"]
 
     # ذخیره / بروزرسانی کاربر
     storage.upsert_user(from_user)
 
-    # ذخیره پیام
+    # ذخیره پیام (با رسانه)
     storage.save_message(user_id, message)
+
+    # دانلود رسانه در پس‌زمینه
+    if message.get("photo") or message.get("video"):
+        asyncio.create_task(_download_media_from_message(user_id, message))
+
+    # تلاش برای دانلود عکس پروفایل در صورتی که قبلاً نداریم
+    user = storage.load_user(user_id)
+    if not user or not user.get("profile_photo_path"):
+        asyncio.create_task(_download_and_save_photo(user_id))
 
     # ارسال تأییدیه دریافت
     custom = storage.get_special_message(
@@ -205,7 +224,35 @@ async def handle_regular_message(message: dict, from_user: dict) -> None:
     # ✨ CHANGE: ذخیره تأییدیه دریافت ارسال شده توسط ربات
     await _send_and_store(user_id, response_text)
 
-    logger.info(f"[BOT] message | user={user_id}")
+    logger.info(f"[BOT] message | user={user_id} | photo={bool(message.get('photo'))} | video={bool(message.get('video'))}")
+
+
+async def _download_media_from_message(user_id: int, message: dict) -> None:
+    """دانلود و ذخیره رسانه (عکس/ویدئو) از پیام دریافتی"""
+    try:
+        media_type = None
+        file_id = None
+
+        if message.get("photo"):
+            media_type = "photo"
+            photos = message.get("photo", [])
+            if photos and isinstance(photos, list):
+                largest = photos[-1]
+                if isinstance(largest, dict):
+                    file_id = largest.get("file_id")
+        elif message.get("video"):
+            media_type = "video"
+            video = message.get("video", {})
+            if isinstance(video, dict):
+                file_id = video.get("file_id")
+
+        if file_id and media_type:
+            media_path = await bale_api.download_media(file_id, MEDIA_DIR)
+            if media_path:
+                storage.update_message_media_path(user_id, message.get("message_id"), media_path)
+                logger.info(f"[BOT] Media downloaded for user {user_id}: {media_path}")
+    except Exception as e:
+        logger.debug(f"[BOT] Media download failed for message {message.get('message_id')}: {e}")
 
 
 async def _download_and_save_photo(user_id: int) -> None:
@@ -214,5 +261,6 @@ async def _download_and_save_photo(user_id: int) -> None:
         photo_path = await bale_api.download_profile_photo(user_id)
         if photo_path:
             storage.update_user_photo(user_id, photo_path)
+            logger.info(f"[BOT] Profile photo saved for user {user_id}")
     except Exception as e:
         logger.debug(f"[BOT] Photo download failed for {user_id}: {e}")

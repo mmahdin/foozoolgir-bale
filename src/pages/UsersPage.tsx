@@ -10,6 +10,9 @@ import {
   Bot,
   Link2,
   Check,
+  Image,
+  Video,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -17,12 +20,15 @@ import {
   fetchUserMessages,
   fetchUserSentMessages,
   sendMessageToUser,
+  sendPhotoToUser,
+  sendVideoToUser,
   deleteSentMessage,
   getUserLink,
   BaleUser,
   BaleMessage,
   SentMessage,
   getUserPhotoUrl,
+  getMessageMediaUrl,
 } from "../api";
 
 type ChatItem =
@@ -43,6 +49,12 @@ export default function UsersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [userDeepLink, setUserDeepLink] = useState<string | null>(null);
+
+  // Media upload state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedMediaType, setSelectedMediaType] = useState<"photo" | "video" | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   // View state for mobile
   const [showChat, setShowChat] = useState(false);
@@ -105,6 +117,8 @@ export default function UsersPage() {
     (user: BaleUser) => {
       setSelectedUser(user);
       setShowChat(true);
+      setSelectedFile(null);
+      setSelectedMediaType(null);
       loadChat(user);
     },
     [loadChat]
@@ -133,6 +147,43 @@ export default function UsersPage() {
     }
   };
 
+  const handleSendMedia = async () => {
+    if (!selectedUser || !selectedFile || !selectedMediaType) return;
+    setSending(true);
+    try {
+      let sentMsg: SentMessage;
+      if (selectedMediaType === "photo") {
+        sentMsg = await sendPhotoToUser(selectedUser.id, selectedFile, messageText.trim() || undefined);
+      } else {
+        sentMsg = await sendVideoToUser(selectedUser.id, selectedFile, messageText.trim() || undefined);
+      }
+      setChatItems((prev) => [
+        ...prev,
+        { kind: "sent", msg: sentMsg, dateObj: new Date(sentMsg.sent_at) },
+      ]);
+      setMessageText("");
+      setSelectedFile(null);
+      setSelectedMediaType(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "خطا در ارسال رسانه");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: "photo" | "video") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedFile(file);
+    setSelectedMediaType(type);
+    e.target.value = "";
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setSelectedMediaType(null);
+  };
+
   const handleDeleteMessage = async (entryId: string) => {
     if (!confirm("آیا از حذف این پیام مطمئن هستید؟")) return;
     setDeletingId(entryId);
@@ -154,7 +205,7 @@ export default function UsersPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !selectedFile) {
       e.preventDefault();
       handleSend();
     }
@@ -382,6 +433,24 @@ export default function UsersPage() {
                             </div>
                             {/* Message bubble */}
                             <div className="max-w-[75%] bg-white border border-slate-100 rounded-2xl rounded-br-md px-3.5 py-2 shadow-sm">
+                              {/* Media content */}
+                              {msg.media_type === "photo" && msg.media_local_path && (
+                                <img
+                                  src={getMessageMediaUrl(selectedUser.id, msg.message_id)}
+                                  alt=""
+                                  className="rounded-lg max-w-full mb-1.5 cursor-pointer"
+                                  loading="lazy"
+                                  onClick={() => window.open(getMessageMediaUrl(selectedUser.id, msg.message_id), "_blank")}
+                                />
+                              )}
+                              {msg.media_type === "video" && msg.media_local_path && (
+                                <video
+                                  src={getMessageMediaUrl(selectedUser.id, msg.message_id)}
+                                  controls
+                                  className="rounded-lg max-w-full mb-1.5"
+                                  preload="metadata"
+                                />
+                              )}
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">
                                 {msg.text || "—"}
                               </p>
@@ -410,6 +479,24 @@ export default function UsersPage() {
                                   <Bot size={11} className="opacity-80" />
                                   <span className="text-[10px] opacity-80 font-medium">پیام خودکار ربات</span>
                                 </div>
+                              )}
+                              {/* Media content for sent messages */}
+                              {msg.media_type === "photo" && msg.media_local_path && (
+                                <img
+                                  src={getMessageMediaUrl(msg.user_id, msg.message_id)}
+                                  alt=""
+                                  className="rounded-lg max-w-full mb-1.5 cursor-pointer"
+                                  loading="lazy"
+                                  onClick={() => window.open(getMessageMediaUrl(msg.user_id, msg.message_id), "_blank")}
+                                />
+                              )}
+                              {msg.media_type === "video" && msg.media_local_path && (
+                                <video
+                                  src={getMessageMediaUrl(msg.user_id, msg.message_id)}
+                                  controls
+                                  className="rounded-lg max-w-full mb-1.5"
+                                  preload="metadata"
+                                />
                               )}
                               <p className={`text-sm whitespace-pre-wrap ${
                                 msg.deleted ? "text-slate-400 line-through" : ""
@@ -463,19 +550,68 @@ export default function UsersPage() {
 
             {/* Send Message Input */}
             <div className="p-3 border-t border-slate-100 bg-white">
+              {/* Selected file preview */}
+              {selectedFile && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 rounded-xl border border-blue-100">
+                  {selectedMediaType === "photo" ? <Image size={16} className="text-blue-600" /> : <Video size={16} className="text-blue-600" />}
+                  <span className="text-sm text-blue-700 flex-1 truncate">{selectedFile.name}</span>
+                  <button
+                    onClick={clearSelectedFile}
+                    className="p-1 hover:bg-blue-100 rounded-lg text-blue-600 transition"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="پیام خود را بنویسید..."
+                  placeholder={selectedFile ? "کپشن (اختیاری)..." : "پیام خود را بنویسید..."}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   disabled={sending}
                 />
+                {/* Photo button */}
                 <button
-                  onClick={handleSend}
-                  disabled={sending || !messageText.trim()}
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={sending}
+                  className={`p-2.5 rounded-xl transition disabled:opacity-50 ${
+                    selectedMediaType === "photo" ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                  title="ارسال عکس"
+                >
+                  <Image size={16} />
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e, "photo")}
+                />
+                {/* Video button */}
+                <button
+                  onClick={() => videoInputRef.current?.click()}
+                  disabled={sending}
+                  className={`p-2.5 rounded-xl transition disabled:opacity-50 ${
+                    selectedMediaType === "video" ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                  title="ارسال ویدئو"
+                >
+                  <Video size={16} />
+                </button>
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e, "video")}
+                />
+                <button
+                  onClick={selectedFile ? handleSendMedia : handleSend}
+                  disabled={sending || (selectedFile ? false : !messageText.trim())}
                   className="p-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-50"
                 >
                   {sending ? (

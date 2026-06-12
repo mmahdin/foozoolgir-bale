@@ -8,7 +8,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -17,7 +17,7 @@ import bale_api
 import bot_handler
 import polling
 import storage
-from config import BOT_USERNAME, PROFILE_PHOTOS_DIR, BOT_TOKEN
+from config import BOT_USERNAME, PROFILE_PHOTOS_DIR, BOT_TOKEN, MEDIA_DIR
 
 logging.basicConfig(
     level=logging.INFO,
@@ -231,6 +231,58 @@ async def send_message_to_user(user_id: int, req: SendMessageRequest):
         raise HTTPException(status_code=500, detail=f"خطا در ارسال پیام: {str(e)}")
 
 
+@app.post("/api/users/{user_id}/send-photo")
+async def send_photo_to_user(user_id: int, file: UploadFile = File(...), caption: str = Form("")):
+    user = storage.load_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+
+    try:
+        content = await file.read()
+        result = await bale_api.send_photo(user_id, content, caption, filename=file.filename)
+        message_id = result.get("message_id", 0) if isinstance(result, dict) else 0
+
+        ext = os.path.splitext(file.filename)[1] or ".jpg"
+        os.makedirs(MEDIA_DIR, exist_ok=True)
+        media_path = os.path.join(MEDIA_DIR, f"{user_id}_{message_id}{ext}")
+        with open(media_path, "wb") as f:
+            f.write(content)
+
+        entry = storage.add_sent_message(
+            user_id, message_id, caption or "[عکس]",
+            source="panel", media_type="photo", media_local_path=media_path
+        )
+        return {"sent_message": entry}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"خطا در ارسال عکس: {str(e)}")
+
+
+@app.post("/api/users/{user_id}/send-video")
+async def send_video_to_user(user_id: int, file: UploadFile = File(...), caption: str = Form("")):
+    user = storage.load_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+
+    try:
+        content = await file.read()
+        result = await bale_api.send_video(user_id, content, caption, filename=file.filename)
+        message_id = result.get("message_id", 0) if isinstance(result, dict) else 0
+
+        ext = os.path.splitext(file.filename)[1] or ".mp4"
+        os.makedirs(MEDIA_DIR, exist_ok=True)
+        media_path = os.path.join(MEDIA_DIR, f"{user_id}_{message_id}{ext}")
+        with open(media_path, "wb") as f:
+            f.write(content)
+
+        entry = storage.add_sent_message(
+            user_id, message_id, caption or "[ویدئو]",
+            source="panel", media_type="video", media_local_path=media_path
+        )
+        return {"sent_message": entry}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"خطا در ارسال ویدئو: {str(e)}")
+
+
 @app.get("/api/users/{user_id}/photo")
 def get_user_photo(user_id: int):
     user = storage.load_user(user_id)
@@ -239,6 +291,28 @@ def get_user_photo(user_id: int):
         if os.path.exists(path):
             return FileResponse(path)
     raise HTTPException(status_code=404, detail="عکس پروفایل یافت نشد")
+
+
+@app.get("/api/users/{user_id}/messages/{message_id}/media")
+def get_message_media(user_id: int, message_id: int):
+    """سرو کردن فایل رسانه (عکس/ویدئو) برای یک پیام خاص"""
+    # ابتدا در پیام‌های دریافتی جستجو
+    messages = storage.load_messages(user_id)
+    for msg in messages:
+        if msg.get("message_id") == message_id and msg.get("media_local_path"):
+            path = msg["media_local_path"]
+            if os.path.exists(path):
+                return FileResponse(path)
+
+    # سپس در پیام‌های ارسالی جستجو
+    sent = storage.load_sent_messages()
+    for entry in sent.values():
+        if entry.get("user_id") == user_id and entry.get("message_id") == message_id and entry.get("media_local_path"):
+            path = entry["media_local_path"]
+            if os.path.exists(path):
+                return FileResponse(path)
+
+    raise HTTPException(status_code=404, detail="فایل رسانه یافت نشد")
 
 
 @app.get("/api/users/{user_id}/link")
@@ -269,6 +343,14 @@ async def delete_sent_message(entry_id: str):
             await bale_api.delete_message(entry["user_id"], entry["message_id"])
         except Exception as e:
             logger.warning(f"[API] Could not delete from Bale: {e}")
+
+    # حذف فایل رسانه محلی اگر وجود داشته باشد
+    media_path = entry.get("media_local_path")
+    if media_path and os.path.exists(media_path):
+        try:
+            os.remove(media_path)
+        except Exception as e:
+            logger.warning(f"[API] Could not delete media file: {e}")
 
     storage.mark_sent_message_deleted(entry_id)
     return {"ok": True}

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from config import (
-    USERS_DIR, MESSAGES_DIR, LINKS_FILE, PROFILE_PHOTOS_DIR,
+    USERS_DIR, MESSAGES_DIR, LINKS_FILE, PROFILE_PHOTOS_DIR, MEDIA_DIR,
     LINK_MAP_FILE, SENT_MESSAGES_FILE, SPECIAL_MESSAGES_FILE,
     BOT_MESSAGES_FILE
 )
@@ -192,11 +192,37 @@ def _msg_path(user_id: int) -> str:
 def save_message(user_id: int, message: dict):
     os.makedirs(MESSAGES_DIR, exist_ok=True)
     messages = _load_json(_msg_path(user_id), [])
+
+    # استخراج اطلاعات رسانه
+    media_type = None
+    media_file_id = None
+    media_local_path = None
+
+    if message.get("photo"):
+        media_type = "photo"
+        photos = message.get("photo", [])
+        if photos and isinstance(photos, list):
+            largest = photos[-1]
+            if isinstance(largest, dict):
+                media_file_id = largest.get("file_id")
+    elif message.get("video"):
+        media_type = "video"
+        video = message.get("video", {})
+        if isinstance(video, dict):
+            media_file_id = video.get("file_id")
+
+    if media_file_id:
+        ext = ".jpg" if media_type == "photo" else ".mp4"
+        media_local_path = os.path.join(MEDIA_DIR, f"{media_file_id}{ext}")
+
     messages.append({
         "message_id": message.get("message_id", 0),
-        "text": message.get("text", ""),
+        "text": message.get("text", "") or message.get("caption", ""),
         "date": _now(),
         "type": "received",
+        "media_type": media_type,
+        "media_file_id": media_file_id,
+        "media_local_path": media_local_path,
     })
     _save_json(_msg_path(user_id), messages)
 
@@ -204,6 +230,16 @@ def save_message(user_id: int, message: dict):
     if user:
         user["message_count"] = user.get("message_count", 0) + 1
         _save_json(_user_path(user_id), user)
+
+
+def update_message_media_path(user_id: int, message_id: int, media_path: str):
+    os.makedirs(MESSAGES_DIR, exist_ok=True)
+    messages = _load_json(_msg_path(user_id), [])
+    for msg in messages:
+        if msg.get("message_id") == message_id:
+            msg["media_local_path"] = media_path
+            break
+    _save_json(_msg_path(user_id), messages)
 
 
 def load_messages(user_id: int) -> list:
@@ -222,7 +258,7 @@ def save_sent_messages(data: dict):
     _save_json(SENT_MESSAGES_FILE, data)
 
 
-def add_sent_message(user_id: int, message_id: int, text: str, source: str = "panel") -> dict:
+def add_sent_message(user_id: int, message_id: int, text: str, source: str = "panel", media_type: str = None, media_local_path: str = None) -> dict:
     """
     ذخیره پیام ارسال شده
     ✨ CHANGE: پارامتر source اضافه شد — "panel" برای پیام‌های پنل، "bot" برای پیام‌های خودکار ربات
@@ -237,6 +273,8 @@ def add_sent_message(user_id: int, message_id: int, text: str, source: str = "pa
         "sent_at": _now(),
         "deleted": False,
         "source": source,  # ✨ NEW: "panel" or "bot"
+        "media_type": media_type,
+        "media_local_path": media_local_path,
     }
     sent[entry_id] = entry
     save_sent_messages(sent)
